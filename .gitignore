@@ -1,0 +1,6 @@
+build
+compile_commands.json
+.cache
+docs
+.DS_Store
+CMakeUserPresets.json
