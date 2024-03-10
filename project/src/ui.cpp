@@ -7,9 +7,7 @@
 #include <QPushButton>
 #include <expected>
 #include <format>
-#include <iostream>
 #include <memory>
-#include <string>
 
 #include "LeoGeo/usb_comm.hpp"
 
