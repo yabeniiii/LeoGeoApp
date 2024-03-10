@@ -1,6 +1,7 @@
 set(sources 
   project/src/main.cpp
-  project/src/main_window.cpp
+  project/src/ui.cpp
+  project/src/usb_comm.cpp
 )
 
 set(includes

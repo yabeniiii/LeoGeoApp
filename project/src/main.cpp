@@ -4,7 +4,7 @@
 #include <QMainWindow>
 #include <QPushButton>
 
-#include "LeoGeo/main_window.hpp"
+#include "LeoGeo/ui.hpp"
 
 int main(int argc, char **argv) {
   QApplication app(argc, argv);

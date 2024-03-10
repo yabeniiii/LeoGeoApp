@@ -10,7 +10,7 @@ project(
   LANGUAGES CXX
 )
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED On)
 
 include(cmake/Config.cmake)
@@ -36,8 +36,7 @@ qt_add_executable(${PROJECT_NAME} ${sources})
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${includes})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Widgets)
-target_link_libraries(${PROJECT_NAME} PRIVATE libusb::libusb)
+target_link_libraries(${PROJECT_NAME} PUBLIC Qt6::Widgets libusb::libusb)
 
 set_target_properties(
   ${PROJECT_NAME}

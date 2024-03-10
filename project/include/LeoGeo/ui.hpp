@@ -1,8 +1,10 @@
-#ifndef LEOGEO_MAIN_WINDOW_H_
-#define LEOGEO_MAIN_WINDOW_H_
+#ifndef LEOGEO_UI_H_
+#define LEOGEO_UI_H_
 
+#include <QErrorMessage>
 #include <QMainWindow>
 #include <QPushButton>
+#include <memory>
 
 namespace LeoGeoUi {
 class MainWindow : public QMainWindow {
@@ -13,8 +15,9 @@ class MainWindow : public QMainWindow {
   void UsbInitButtonHandler();
 
  private:
-  std::unique_ptr<QPushButton> usb_init_button;
+  std::unique_ptr<QPushButton> usb_init_button_;
+  std::unique_ptr<QErrorMessage> error_message_;
 };
 }  // namespace LeoGeoUi
 
-#endif  // LEOGEO_MAIN_WINDOW_H_
+#endif  // LEOGEO_UI_H_
