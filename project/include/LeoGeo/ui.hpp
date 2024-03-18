@@ -3,8 +3,9 @@
 
 #include <QErrorMessage>
 #include <QMainWindow>
+#include <QMessageBox>
 #include <QPushButton>
-#include <memory>
+#include <QtCharts/QChart>
 
 namespace LeoGeoUi {
 class MainWindow : public QMainWindow {
@@ -13,10 +14,18 @@ class MainWindow : public QMainWindow {
 
  private slots:
   void UsbInitButtonHandler();
+  void LogFetchButtonHandler();
+  void UpdateCoordButtonHandler();
 
  private:
   std::unique_ptr<QPushButton> usb_init_button_;
+  std::unique_ptr<QPushButton> log_fetch_button_;
+  std::unique_ptr<QPushButton> update_coord_button_;
   std::unique_ptr<QErrorMessage> error_message_;
+  std::unique_ptr<QMessageBox> message_;
+  std::unique_ptr<QChart> alt_chartview_;
+  std::unique_ptr<QChart> temp_chartview_;
+  std::unique_ptr<QChart> humid_chartview_;
 };
 }  // namespace LeoGeoUi
 
