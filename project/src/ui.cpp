@@ -85,10 +85,10 @@ void MainWindow::UsbInitButtonHandler() {
 
 void MainWindow::LogFetchButtonHandler() {
   alt_chart_->removeSeries(alt_series_.get());
-  alt_series_->append(0, 500);   // NOLINT
-  alt_series_->append(2, 750);   // NOLINT
-  alt_series_->append(3, 1000);  // NOLINT
-  alt_series_->append(4, 1100);  // NOLINT
+  alt_series_->append(0, 500);   // NOLINT (magic number for test purposes)
+  alt_series_->append(2, 750);   // NOLINT (magic number for test purposes)
+  alt_series_->append(3, 1000);  // NOLINT (magic number for test purposes)
+  alt_series_->append(4, 1100);  // NOLINT (magic number for test purposes)
   alt_chart_->addSeries(alt_series_.get());
   alt_chart_->createDefaultAxes();
   alt_view_->update();
