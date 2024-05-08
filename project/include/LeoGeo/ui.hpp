@@ -5,9 +5,19 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QtCharts/QChart>
+#include <QtCharts/QChartView>
+#include <QtCharts/QLineSeries>
+#include <cstddef>
+#include <memory>
 
 namespace LeoGeoUi {
+
+class GraphView : public QChartView {
+ public:
+  explicit GraphView(QChart *chart, QWidget *parent = nullptr);
+  void locate(const int location_index);
+};
+
 class MainWindow : public QMainWindow {
  public:
   explicit MainWindow(QWidget *parent = nullptr);
@@ -23,10 +33,17 @@ class MainWindow : public QMainWindow {
   std::unique_ptr<QPushButton> update_coord_button_;
   std::unique_ptr<QErrorMessage> error_message_;
   std::unique_ptr<QMessageBox> message_;
-  std::unique_ptr<QChart> alt_chartview_;
-  std::unique_ptr<QChart> temp_chartview_;
-  std::unique_ptr<QChart> humid_chartview_;
+  std::unique_ptr<QChart> alt_chart_;
+  std::unique_ptr<QChart> temp_chart_;
+  std::unique_ptr<QChart> humid_chart_;
+  std::unique_ptr<GraphView> alt_view_;
+  std::unique_ptr<GraphView> temp_view_;
+  std::unique_ptr<GraphView> humid_view_;
+  std::unique_ptr<QLineSeries> alt_series_;
+  std::unique_ptr<QLineSeries> temp_series_;
+  std::unique_ptr<QLineSeries> humid_series_;
 };
+
 }  // namespace LeoGeoUi
 
 #endif  // LEOGEO_UI_H_

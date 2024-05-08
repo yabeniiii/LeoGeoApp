@@ -1,8 +1,6 @@
 #include "LeoGeo/main.hpp"
 
 #include <QApplication>
-#include <QMainWindow>
-#include <QPushButton>
 
 #include "LeoGeo/ui.hpp"
 

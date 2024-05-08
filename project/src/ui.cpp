@@ -6,55 +6,64 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QtCharts/QChart>
-#include <cstddef>
 #include <expected>
-#include <format>
-#include <type_traits>
+#include <memory>
 
 #include "LeoGeo/usb_comm.hpp"
 
 namespace LeoGeoUi {
 
 namespace {
-constexpr std::size_t button_height = 50;
-constexpr std::size_t button_width = 200;
-constexpr std::size_t button_pos = 300;
+constexpr int kPadding = 20;
 
-constexpr std::size_t chart_height = 500;
-constexpr std::size_t chart_width = 500;
-constexpr std::size_t chart_pos = 600;
+constexpr int kButton_height = 50;
+constexpr int kButton_width = 200;
+constexpr int kButton_pos = 300;
+
+constexpr int kChart_height = 200;
+constexpr int kChart_width = 800;
+constexpr int kChart_pos = 220;
+constexpr int kChart_top_padding = 90;
 }  // namespace
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   error_message_ = std::make_unique<QErrorMessage>(this);
   message_ = std::make_unique<QMessageBox>(this);
 
-  alt_chartview_ = std::make_unique<QChart>();
-  temp_chartview_ = std::make_unique<QChart>();
-  humid_chartview_ = std::make_unique<QChart>();
-
-  alt_chartview_->setTitle(
-      QApplication::translate("alt_chart_title", "Altitude"));
-  temp_chartview_->setTitle(
-      QApplication::translate("temp_chart_title", "Temperature"));
-  humid_chartview_->setTitle(
-      QApplication::translate("humid_chart_title", "Humidity"));
-
-  alt_chartview_->setGeometry(0, (chart_pos * 0), chart_width, chart_height);
-  temp_chartview_->setGeometry(0, (chart_pos * 1), chart_width, chart_height);
-  humid_chartview_->setGeometry(0, (chart_pos * 2), chart_width, chart_height);
-
   usb_init_button_ = std::make_unique<QPushButton>("Connect", this);
   log_fetch_button_ = std::make_unique<QPushButton>("Fetch Logs", this);
   update_coord_button_ = std::make_unique<QPushButton>("Update Coords", this);
 
-  usb_init_button_->setGeometry((button_pos * 0), 0, button_width,
-                                button_height);
-  log_fetch_button_->setGeometry((button_pos * 1), 0, button_width,
-                                 button_height);
-  update_coord_button_->setGeometry((button_pos * 2), 0, button_width,
-                                    button_height);
+  alt_chart_ = std::make_unique<QChart>();
+  temp_chart_ = std::make_unique<QChart>();
+  humid_chart_ = std::make_unique<QChart>();
+  alt_series_ = std::make_unique<QLineSeries>();
+  temp_series_ = std::make_unique<QLineSeries>();
+  humid_series_ = std::make_unique<QLineSeries>();
+  alt_chart_->legend()->hide();
+  temp_chart_->legend()->hide();
+  humid_chart_->legend()->hide();
+  alt_chart_->setTitle("Altitude");
+  temp_chart_->setTitle("Temperature");
+  humid_chart_->setTitle("Humidity");
+  temp_chart_->createDefaultAxes();
+  humid_chart_->createDefaultAxes();
+  alt_chart_->addSeries(alt_series_.get());
+  temp_chart_->addSeries(temp_series_.get());
+  humid_chart_->addSeries(humid_series_.get());
+  alt_view_ = std::make_unique<GraphView>(alt_chart_.get(), this);
+  alt_view_->locate(0);
+  temp_view_ = std::make_unique<GraphView>(temp_chart_.get(), this);
+  temp_view_->locate(1);
+  humid_view_ = std::make_unique<GraphView>(humid_chart_.get(), this);
+  humid_view_->locate(2);
+
+  usb_init_button_->setGeometry((kButton_pos * 0) + kPadding, kPadding,
+                                kButton_width, kButton_height);
+  log_fetch_button_->setGeometry((kButton_pos * 1) + kPadding, kPadding,
+                                 kButton_width, kButton_height);
+  update_coord_button_->setGeometry((kButton_pos * 2) + kPadding, kPadding,
+                                    kButton_width, kButton_height);
 
   connect(usb_init_button_.get(), &QPushButton::released, this,
           &MainWindow::UsbInitButtonHandler);
@@ -68,32 +77,35 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 }
 
 void MainWindow::UsbInitButtonHandler() {
-#ifdef USBOFF
-  error_message_->showMessage(
-      QApplication::translate("error_window", "Usb unimplemented"));
-  QApplication::beep();
-#else
   if (const auto status = LeoGeoUsb::UsbStart(); !status) {
     error_message_->showMessage(
         QApplication::translate("error_window", status.error().c_str()));
   }
-#endif
 }
 
 void MainWindow::LogFetchButtonHandler() {
-#ifdef USBOFF
-  error_message_->showMessage(
-      QApplication::translate("error_window", "Usb unimplemented"));
-  QApplication::beep();
-#else
-#endif
+  alt_chart_->removeSeries(alt_series_.get());
+  alt_series_->append(0, 500);   // NOLINT
+  alt_series_->append(2, 750);   // NOLINT
+  alt_series_->append(3, 1000);  // NOLINT
+  alt_series_->append(4, 1100);  // NOLINT
+  alt_chart_->addSeries(alt_series_.get());
+  alt_chart_->createDefaultAxes();
+  alt_view_->update();
 }
-void MainWindow::UpdateCoordButtonHandler() {
-#ifdef USBOFF
-  error_message_->showMessage(
-      QApplication::translate("error_window", "Usb unimplemented"));
-  QApplication::beep();
-#else
-#endif
+
+void MainWindow::UpdateCoordButtonHandler() {}
+
+GraphView::GraphView(QChart *chart, QWidget *parent)
+    : QChartView(chart, parent) {
+  this->setRenderHint(QPainter::Antialiasing);
+  this->show();
 }
+
+void GraphView::locate(const int location_index) {
+  this->setGeometry(kPadding,
+                    (kChart_pos * location_index) + kChart_top_padding,
+                    kChart_width, kChart_height);
+}
+
 }  // namespace LeoGeoUi
