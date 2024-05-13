@@ -13,6 +13,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - uses: seanmiddleditch/gha-setup-ninja@master
+    - uses: turtlebrowser/get-conan@v1.0
+    - name: conan profile
+      run: conan profile detect && sudo apt-get install libudev-dev
     - name: setup
       run: make setup
     - name: build
