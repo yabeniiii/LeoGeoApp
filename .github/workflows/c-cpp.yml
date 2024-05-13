@@ -16,6 +16,7 @@ jobs:
     - name: install conan
       id: conan
       uses: turtlebrowser/get-conan@v1.0
+      run: conan profile detect
     - name: setup
       run: make setup
     - name: build
