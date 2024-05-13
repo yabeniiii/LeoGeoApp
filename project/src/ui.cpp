@@ -107,5 +107,6 @@ void GraphView::locate(const int location_index) {
                     (kChart_pos * location_index) + kChart_top_padding,
                     kChart_width, kChart_height);
 }
+// test
 
 }  // namespace LeoGeoUi
