@@ -13,9 +13,14 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - uses: seanmiddleditch/gha-setup-ninja@master
-    - uses: turtlebrowser/get-conan@v1.0
-    - uses: jurplel/install-qt-action@v6.*.*
+    - name: install ninja
+      uses: seanmiddleditch/gha-setup-ninja@master
+    - name: install conan
+      uses: turtlebrowser/get-conan@v1.0
+    - name: install qt6
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: "6.*.*"
     - name: conan profile
       run: conan profile detect && sudo apt-get install libudev-dev
     - name: setup
