@@ -1,7 +1,8 @@
 .PHONY: setup build clean build-release
+.DEFAULT_GOAL := build-release
 
 setup:
-	 conan install . -sbuild_type=Debug --output-folder=build --build=missing && cd build && cmake -GNinja -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake ..
+	conan install . -sbuild_type=Debug --output-folder=build --build=missing && cd build && cmake -GNinja -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake ..
 
 build:
 	cd build && cmake --build .

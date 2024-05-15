@@ -8,8 +8,8 @@
 namespace LeoGeoUsb {
 
 struct Coordinates {
-  std::uint64_t latitude;
-  std::uint64_t longitude;
+  double latitude;
+  double longitude;
 };
 
 std::expected<void, std::string> UsbStart();

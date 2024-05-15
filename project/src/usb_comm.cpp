@@ -6,6 +6,7 @@
 #include <expected>
 #include <format>
 #include <string>
+#include <vector>
 
 namespace {
 constexpr std::uint16_t kVendor_id = 0x0781;
@@ -56,7 +57,7 @@ std::expected<void, std::string> UsbStart() {
 std::expected<void, std::string> GetLogged() { return {}; }
 
 std::expected<void, std::string> UpdateCoordinates(
-    Coordinates new_coordinates) {
+    std::vector<Coordinates> new_coordinates) {
   return {};
 }
 
