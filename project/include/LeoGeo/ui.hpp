@@ -3,24 +3,29 @@
 
 #include <keychain/keychain.h>
 
+#include <QBoxLayout>
+#include <QButtonGroup>
+#include <QDoubleSpinBox>
 #include <QErrorMessage>
+#include <QHBoxLayout>
 #include <QInputDialog>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QVBoxLayout>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
 #include <memory>
 
+#include "LeoGeo/usb_comm.hpp"
+
 namespace LeoGeoUi {
 
-class GraphView : public QChartView {
- public:
-  explicit GraphView(QChart *chart, QWidget *parent = nullptr);
-  void locate(const int location_index);
-};
+class MainWindow;
+class CoordFrame;
+class CoordSet;
 
-class MainWindow : public QMainWindow {
+class MainWindow : public QWidget {
  public:
   explicit MainWindow(QWidget *parent = nullptr);
 
@@ -43,12 +48,46 @@ class MainWindow : public QMainWindow {
   std::unique_ptr<QMessageBox> message_;
   std::unique_ptr<QChart> temp_chart_;
   std::unique_ptr<QChart> humid_chart_;
-  std::unique_ptr<GraphView> temp_view_;
-  std::unique_ptr<GraphView> humid_view_;
+  std::unique_ptr<QChartView> temp_view_;
+  std::unique_ptr<QChartView> humid_view_;
   std::unique_ptr<QLineSeries> temp_series_;
   std::unique_ptr<QLineSeries> humid_series_;
   std::string password_;
   keychain::Error keychain_error_;
+  std::unique_ptr<CoordFrame> coord_frame_;
+  std::unique_ptr<QBoxLayout> layout_;
+  std::unique_ptr<QBoxLayout> button_layout_;
+  std::unique_ptr<QBoxLayout> button_top_layout_;
+  std::unique_ptr<QBoxLayout> button_bottom_layout_;
+};
+
+class CoordFrame : public QWidget {
+ public:
+  explicit CoordFrame(QWidget *parent = nullptr);
+  std::vector<LeoGeoUsb::Coordinates> GetCoords();
+
+ private slots:
+  void AddCoordSetHandler();
+
+ private:
+  std::unique_ptr<QPushButton> add_coord_set_button_;
+  std::shared_ptr<QVBoxLayout> layout_;
+};
+
+class CoordSet : public QWidget {
+ public:
+  explicit CoordSet(QWidget *parent = nullptr);
+  LeoGeoUsb::Coordinates GetCoordinates();
+
+ private slots:
+  void DeleteCoordSetHandler();
+
+ private:
+  QWidget *parent_;
+  std::unique_ptr<QHBoxLayout> layout_;
+  std::unique_ptr<QPushButton> delete_coord_set_button_;
+  std::unique_ptr<QDoubleSpinBox> lat_;
+  std::unique_ptr<QDoubleSpinBox> long_;
 };
 
 }  // namespace LeoGeoUi

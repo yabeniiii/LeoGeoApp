@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <expected>
 #include <string>
+#include <vector>
 
 namespace LeoGeoUsb {
 
@@ -14,7 +15,8 @@ struct Coordinates {
 
 std::expected<void, std::string> UsbStart();
 std::expected<void, std::string> GetLogged();
-std::expected<void, std::string> UpdateCoordinates(Coordinates new_coordinates);
+std::expected<std::vector<Coordinates>, std::string> UpdateCoordinates(
+    std::vector<Coordinates> new_coordinates);
 }  // namespace LeoGeoUsb
 
 #endif  // LEOGEO_USB_COMM_H_

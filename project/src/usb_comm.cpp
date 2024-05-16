@@ -56,9 +56,9 @@ std::expected<void, std::string> UsbStart() {
 
 std::expected<void, std::string> GetLogged() { return {}; }
 
-std::expected<void, std::string> UpdateCoordinates(
+std::expected<std::vector<Coordinates>, std::string> UpdateCoordinates(
     std::vector<Coordinates> new_coordinates) {
-  return {};
+  return new_coordinates;
 }
 
 }  // namespace LeoGeoUsb
