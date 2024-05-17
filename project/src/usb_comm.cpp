@@ -2,18 +2,17 @@
 
 #include <libusb-1.0/libusb.h>
 
-#include <cstdint>
 #include <expected>
 #include <format>
 #include <string>
 #include <vector>
 
+namespace LeoGeoUsb {
+
 namespace {
 constexpr std::uint16_t kVendor_id = 0x0781;
 constexpr std::uint16_t kProduct_id = 0x5595;
 }  // namespace
-
-namespace LeoGeoUsb {
 
 std::expected<void, std::string> UsbStart() {
   std::string libusb_version =

@@ -1,7 +1,6 @@
 #ifndef LEOGEO_USB_COMM_H_
 #define LEOGEO_USB_COMM_H_
 
-#include <cstdint>
 #include <expected>
 #include <string>
 #include <vector>

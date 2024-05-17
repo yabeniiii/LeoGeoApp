@@ -4,13 +4,19 @@
 
 #include <QApplication>
 #include <QBoxLayout>
+#include <QButtonGroup>
+#include <QDoubleSpinBox>
+#include <QErrorMessage>
+#include <QHBoxLayout>
 #include <QInputDialog>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPushButton>
-#include <expected>
-#include <format>
+#include <QVBoxLayout>
+#include <QtCharts/QChartView>
+#include <QtCharts/QLineSeries>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "LeoGeo/usb_comm.hpp"
@@ -18,37 +24,33 @@
 namespace LeoGeoUi {
 
 namespace {
-constexpr int kPadding = 20;
-
-constexpr int kButton_height = 50;
-constexpr int kButton_width = 200;
-
-constexpr int kChart_height = 200;
-constexpr int kChart_width = 640;
-constexpr int kChart_pos = 220;
-constexpr int kChart_top_padding = 90;
-
+// details used to store password in system keychain
 const std::string kPackage = "com.LeoGeo.LeoGeo";
 const std::string kService = "LeoGeo";
 const std::string kUser = "Admin";
 }  // namespace
 
 MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
-  layout_ = std::make_unique<QBoxLayout>(QBoxLayout::Direction::TopToBottom);
-  button_layout_ =
-      std::make_unique<QBoxLayout>(QBoxLayout::Direction::TopToBottom);
-  button_top_layout_ =
-      std::make_unique<QBoxLayout>(QBoxLayout::Direction::LeftToRight);
-  button_bottom_layout_ =
-      std::make_unique<QBoxLayout>(QBoxLayout::Direction::LeftToRight);
-  keychain_error_ = keychain::Error();
+  using std::make_unique;
+
+  // two horizontal layouts within a vertical layout, i didn't know grid layout
+  // is a thing, will have to try
+  layout_ = make_unique<QBoxLayout>(QBoxLayout::TopToBottom);
+  button_layout_ = make_unique<QBoxLayout>(QBoxLayout::TopToBottom);
+  button_top_layout_ = make_unique<QBoxLayout>(QBoxLayout::LeftToRight);
+  button_bottom_layout_ = make_unique<QBoxLayout>(QBoxLayout::LeftToRight);
 
   button_layout_->addLayout(button_top_layout_.get());
   button_layout_->addLayout(button_bottom_layout_.get());
 
   layout_->addLayout(button_layout_.get());
-  error_message_ = std::make_unique<QErrorMessage>(this);
-  message_ = std::make_unique<QMessageBox>(this);
+
+  // variable is passed into each keychain function, can
+  // then be used to know which particular error
+  // occurred (if any)
+  keychain_error_ = keychain::Error();
+  error_message_ = make_unique<QErrorMessage>(this);
+  message_ = make_unique<QMessageBox>(this);
 
   password_ = keychain::getPassword(kPackage, kService, kUser, keychain_error_);
 
@@ -57,45 +59,50 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
         "Administrator password not found in system keychain. Using default "
         "password, please set "
         "custom password as soon as possible.");
+
     message_->exec();
     password_ = "LeoGeo2024";
-
   } else if (keychain_error_) {
-    error_message_->showMessage(QApplication::translate(
-        "error_message",
-        std::format("Keychain error: {}", keychain_error_.message).c_str()));
+    error_message_->showMessage(
+        tr("error_message",
+           std::format("Keychain error: {}", keychain_error_.message).c_str()));
 
     QApplication::quit();
   }
 
-  coord_frame_ = std::make_unique<CoordFrame>();
+  // contains the input boxes and buttons for coordinates, hidden until admin
+  // mode
+  coord_frame_ = make_unique<CoordFrame>();
   coord_frame_->hide();
 
   layout_->addWidget(coord_frame_.get());
 
-  usb_init_button_ = std::make_unique<QPushButton>("Connect", this);
-  log_fetch_button_ = std::make_unique<QPushButton>("Fetch Logs", this);
-  admin_mode_button_ = std::make_unique<QPushButton>("Admin Mode", this);
+  usb_init_button_ = make_unique<QPushButton>("Connect", this);
+  log_fetch_button_ = make_unique<QPushButton>("Fetch Logs", this);
+  admin_mode_button_ = make_unique<QPushButton>("Admin Mode", this);
 
   button_top_layout_->addWidget(usb_init_button_.get());
   button_top_layout_->addWidget(log_fetch_button_.get());
   button_top_layout_->addWidget(admin_mode_button_.get());
 
-  exit_admin_button_ = std::make_unique<QPushButton>("Exit Admin", this);
-  exit_admin_button_->hide();
-  upload_coord_button_ = std::make_unique<QPushButton>("Upload Coords", this);
-  upload_coord_button_->hide();
-  change_pass_button_ = std::make_unique<QPushButton>("Change Password", this);
-  change_pass_button_->hide();
+  exit_admin_button_ = make_unique<QPushButton>("Exit Admin", this);
+  upload_coord_button_ = make_unique<QPushButton>("Upload Coords", this);
+  change_pass_button_ = make_unique<QPushButton>("Change Password", this);
 
   button_bottom_layout_->addWidget(change_pass_button_.get());
   button_bottom_layout_->addWidget(upload_coord_button_.get());
   button_bottom_layout_->addWidget(exit_admin_button_.get());
 
-  temp_chart_ = std::make_unique<QChart>();
-  humid_chart_ = std::make_unique<QChart>();
-  temp_series_ = std::make_unique<QLineSeries>();
-  humid_series_ = std::make_unique<QLineSeries>();
+  exit_admin_button_->hide();
+  upload_coord_button_->hide();
+  change_pass_button_->hide();
+
+  // chart chartview contains and displays chart, chart contains and displays
+  // lineseries, lineseries contains values
+  temp_chart_ = make_unique<QChart>();
+  humid_chart_ = make_unique<QChart>();
+  temp_series_ = make_unique<QLineSeries>();
+  humid_series_ = make_unique<QLineSeries>();
   temp_chart_->legend()->hide();
   humid_chart_->legend()->hide();
   temp_chart_->setTitle("Temperature");
@@ -104,43 +111,48 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   humid_chart_->createDefaultAxes();
   temp_chart_->addSeries(temp_series_.get());
   humid_chart_->addSeries(humid_series_.get());
-  temp_view_ = std::make_unique<QChartView>(temp_chart_.get(), this);
+  temp_view_ = make_unique<QChartView>(temp_chart_.get(), this);
+  humid_view_ = make_unique<QChartView>(humid_chart_.get(), this);
   temp_view_->show();
-  humid_view_ = std::make_unique<QChartView>(humid_chart_.get(), this);
   humid_view_->show();
-
   layout_->addWidget(temp_view_.get());
   layout_->addWidget(humid_view_.get());
+
   layout_->addWidget(coord_frame_.get());
 
-  connect(usb_init_button_.get(), &QPushButton::released, this,
+  // assosciating clicking buttons with their corresponding functions.
+  connect(usb_init_button_.get(), &QPushButton::clicked, this,
           &MainWindow::UsbInitButtonHandler);
-  connect(log_fetch_button_.get(), &QPushButton::released, this,
+  connect(log_fetch_button_.get(), &QPushButton::clicked, this,
           &MainWindow::LogFetchButtonHandler);
-  connect(admin_mode_button_.get(), &QPushButton::released, this,
+  connect(admin_mode_button_.get(), &QPushButton::clicked, this,
           &MainWindow::AdminModeButtonHandler);
-  connect(upload_coord_button_.get(), &QPushButton::released, this,
+  connect(upload_coord_button_.get(), &QPushButton::clicked, this,
           &MainWindow::UploadCoordButtonHandler);
-  connect(exit_admin_button_.get(), &QPushButton::released, this,
+  connect(exit_admin_button_.get(), &QPushButton::clicked, this,
           &MainWindow::ExitAdminButtonHandler);
-  connect(change_pass_button_.get(), &QPushButton::released, this,
+  connect(change_pass_button_.get(), &QPushButton::clicked, this,
           &MainWindow::ChangePassButtonHandler);
 
   this->setLayout(layout_.get());
-  this->setWindowTitle(QApplication::translate("main_window_title", "LeoGeo"));
+  this->setWindowTitle(tr("main_window_title", "LeoGeo"));
   this->show();
 }
 
 void MainWindow::UsbInitButtonHandler() {
-  if (const auto status = LeoGeoUsb::UsbStart(); !status) {
-    error_message_->showMessage(
-        QApplication::translate("error_window", status.error().c_str()));
+  const auto status = LeoGeoUsb::UsbStart();
+
+  if (!status) {
+    error_message_->showMessage(tr("error_window", status.error().c_str()));
   }
 }
 
 void MainWindow::LogFetchButtonHandler() {
+  // i've found removing the lineseries and putting back again is the best way
+  // to get the chart to update with new values
   temp_chart_->removeSeries(temp_series_.get());
 
+  temp_series_->clear();
   // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers)
   // magic numbers for testing graph
   temp_series_->append(0, 500);
@@ -155,16 +167,20 @@ void MainWindow::LogFetchButtonHandler() {
 }
 
 void MainWindow::AdminModeButtonHandler() {
-  bool ok = false;
+  bool ok = false;  // returns true once user presses ok button in popup
   QString inputPassword = QInputDialog::getText(
       this, "Administrator", "Enter Administrator Password",
       QLineEdit::EchoMode::Password, "", &ok);
 
+  // only happens if the user presses cancel, in which case we obviously want to
+  // return without actually doing anything
   if (!ok) {
     return;
   }
 
   if (inputPassword.toStdString() == password_) {
+    // just hides both charts and shows all the admin-only buttons, easiest way
+    // to do it
     humid_view_->hide();
     temp_view_->hide();
     admin_mode_button_->setEnabled(false);
@@ -173,8 +189,7 @@ void MainWindow::AdminModeButtonHandler() {
     change_pass_button_->show();
     coord_frame_->show();
   } else {
-    error_message_->showMessage(
-        QApplication::translate("error_window", "Incorrect Password"));
+    error_message_->showMessage(tr("error_window", "Incorrect Password"));
   }
 }
 
@@ -192,8 +207,7 @@ void MainWindow::UploadCoordButtonHandler() {
   const auto status = LeoGeoUsb::UpdateCoordinates(coord_frame_->GetCoords());
 
   if (!status) {
-    error_message_->showMessage(
-        QApplication::translate("error_window", status.error().c_str()));
+    error_message_->showMessage(tr("error_window", status.error().c_str()));
   } else {
     message_->setText(std::format("{}, {}", status.value().end()->latitude,
                                   status.value().end()->longitude)
@@ -203,30 +217,35 @@ void MainWindow::UploadCoordButtonHandler() {
 };
 
 void MainWindow::ChangePassButtonHandler() {
+  // really simple, spawn popup, save input to temporary variable, spawn another
+  // popup, compare with the temp, if it's a match store it to the main password
+  // variable, and save to system keychain
   bool ok = false;
-  std::string tempPassword = "";
-  QString inputPassword = "";
 
-  inputPassword =
+  const auto tempPassword =
       QInputDialog::getText(this, "Administrator", "Enter New Password",
-                            QLineEdit::EchoMode::Password, "", &ok);
+                            QLineEdit::EchoMode::Password, "", &ok)
+          .toStdString();
 
-  if (ok) {
-    tempPassword = inputPassword.toStdString();
-  }
-
-  inputPassword =
-      QInputDialog::getText(this, "Administrator", "Re-Enter New Password",
-                            QLineEdit::EchoMode::Password, "", &ok);
   if (!ok) {
     return;
   }
-  if (inputPassword.toStdString() == tempPassword) {
+
+  const auto inputPassword =
+      QInputDialog::getText(this, "Administrator", "Re-Enter New Password",
+                            QLineEdit::EchoMode::Password, "", &ok)
+          .toStdString();
+
+  if (!ok) {
+    return;
+  }
+
+  if (inputPassword == tempPassword) {
     password_ = tempPassword;
     keychain::setPassword(kPackage, kService, kUser, password_,
                           keychain_error_);
     if (keychain_error_) {
-      error_message_->showMessage(QApplication::translate(
+      error_message_->showMessage(tr(
           "error_message",
           std::format("Keychain error: {}", keychain_error_.message).c_str()));
       QApplication::quit();
@@ -234,19 +253,18 @@ void MainWindow::ChangePassButtonHandler() {
     message_->setText("Password Changed");
     message_->exec();
   } else {
-    error_message_->showMessage(QApplication::translate(
-        "error_message",
-        "Passwords do not match. Password has not been changed."));
+    error_message_->showMessage(
+        tr("error_message",
+           "Passwords do not match. Password has not been changed."));
   }
-}
 };
 
 CoordFrame::CoordFrame(QWidget *parent) {
-  add_coord_set_button_ =
-      std::make_unique<QPushButton>("Add Coordinates", this);
+  using std::make_unique;
 
-  layout_ = std::make_unique<QVBoxLayout>();
+  add_coord_set_button_ = make_unique<QPushButton>("Add Coordinate Set", this);
 
+  layout_ = make_unique<QVBoxLayout>();
   layout_->addWidget(add_coord_set_button_.get());
 
   connect(add_coord_set_button_.get(), &QPushButton::released, this,
@@ -262,7 +280,11 @@ void CoordFrame::AddCoordSetHandler() {
 }
 
 std::vector<LeoGeoUsb::Coordinates> CoordFrame::GetCoords() {
-  std::vector<LeoGeoUsb::Coordinates> coordinates;
+  // loops through all the numbers entered into whatever number of boxes,
+  // returns them as a vector of LeoGeoUsb::Coordinates
+  using LeoGeoUsb::Coordinates;
+
+  std::vector<Coordinates> coordinates;
 
   for (int i = 0; i < layout_->count(); i++) {
     coordinates.push_back(dynamic_cast<CoordSet *>(layout_->itemAt(i)->widget())
@@ -273,17 +295,28 @@ std::vector<LeoGeoUsb::Coordinates> CoordFrame::GetCoords() {
 }
 
 CoordSet::CoordSet(QWidget *parent) : parent_(parent) {
-  layout_ = std::make_unique<QHBoxLayout>();
-  lat_ = std::make_unique<QDoubleSpinBox>(this);
+  // each widget of this class contains a button for deleting itself, and two
+  // number entry boxes, one for longitude and latitude. a button in the outer
+  // layout allows the user to spawn as many of these as they want (or at least
+  // until their screen runs out of space, haven't implemented scrolling)
+  using std::make_unique;
+
+  layout_ = make_unique<QHBoxLayout>();
+  lat_ = make_unique<QDoubleSpinBox>(this);
+  // limiting the possible input values to numbers that are actually valid
+  // global coordinates
+  // also setting to up to ten decimals of precision, probably more than
+  // neccessary, definitely more than the gps module can provide, but costs us
+  // nothing with the range of values we're expecting
   lat_->setRange(-90, 90);  // NOLINT
   lat_->setDecimals(10);    // NOLINT
   lat_->show();
-  long_ = std::make_unique<QDoubleSpinBox>(this);
+  long_ = make_unique<QDoubleSpinBox>(this);
   long_->setRange(-180, 180);  // NOLINT
   long_->setDecimals(10);      // NOLINT
   long_->show();
 
-  delete_coord_set_button_ = std::make_unique<QPushButton>("X", this);
+  delete_coord_set_button_ = make_unique<QPushButton>("Delete Set", this);
   connect(delete_coord_set_button_.get(), &QPushButton::released, this,
           &CoordSet::DeleteCoordSetHandler);
 
@@ -294,10 +327,17 @@ CoordSet::CoordSet(QWidget *parent) : parent_(parent) {
   this->setLayout(layout_.get());
 }
 
-void CoordSet::DeleteCoordSetHandler() { delete this; }
+void CoordSet::DeleteCoordSetHandler() {
+  // i'm sure there's a way to do this without needing to make it its own
+  // function, but i don't know what that is and i can't be bothered to find out
+  delete this;
+}
 
 LeoGeoUsb::Coordinates CoordSet::GetCoordinates() {
-  return LeoGeoUsb::Coordinates{lat_->value(), long_->value()};
+  // very sophisticated function, bet you can't guess what it does
+  using LeoGeoUsb::Coordinates;
+
+  return Coordinates{lat_->value(), long_->value()};
 }
 
 }  // namespace LeoGeoUi
