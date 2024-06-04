@@ -1,63 +1,96 @@
 #include "LeoGeo/usb_comm.hpp"
 
-#include <libusb-1.0/libusb.h>
-
+#include <QMutex>
+#include <QObject>
+#include <QString>
+#include <QThread>
+#include <QTime>
+#include <QWaitCondition>
+#include <QtSerialPort/QSerialPort>
+#include <cstdint>
 #include <expected>
-#include <format>
 #include <string>
-#include <vector>
 
 namespace LeoGeoUsb {
 
-namespace {
-constexpr std::uint16_t kVendor_id = 0x0781;
-constexpr std::uint16_t kProduct_id = 0x5595;
-}  // namespace
+UartReceiver::UartReceiver(QObject *parent) : QThread() {}
 
-std::expected<void, std::string> UsbStart() {
-  std::string libusb_version =
-      std::format("{}.{}.{}", libusb_get_version()->major,
-                  libusb_get_version()->minor, libusb_get_version()->micro);
+void UartReceiver::error(const QString &s) {}
 
-  if (const auto init_status = libusb_init(NULL);
-      init_status != LIBUSB_SUCCESS) {
-    return std::unexpected(std::format(
-        "libusb {}: init error: {} {}: {}", libusb_version, init_status,
-        libusb_error_name(init_status), libusb_strerror(init_status)));
-  }
+void UartReceiver::Receive(const std::string &port,
+                           const std::uint8_t timeout) {
+  port_name_ = port;
+  wait_timeout_ = timeout;
 
-  libusb_device_handle* device_handle =
-      libusb_open_device_with_vid_pid(NULL, kVendor_id, kProduct_id);
-
-  if (device_handle == NULL) {
-    return std::unexpected(
-        std::format("libusb {}: could not open device with vid: {} and pid: {}",
-                    libusb_version, kVendor_id, kProduct_id));
-  }
-
-  libusb_device* device = libusb_get_device(device_handle);
-
-  libusb_device_descriptor device_descriptor = {0};
-  libusb_get_device_descriptor(device, &device_descriptor);
-
-  if (auto descriptor_get_status =
-          libusb_get_device_descriptor(device, &device_descriptor);
-      descriptor_get_status != LIBUSB_SUCCESS) {
-    return std::unexpected(std::format(
-        "libusb {}: device descriptor fetch error: {} {}: {}", libusb_version,
-        descriptor_get_status, libusb_error_name(descriptor_get_status),
-        libusb_strerror(descriptor_get_status)));
-  };
-
-  libusb_exit(NULL);
-  return {};
+  if (!isRunning()) start();
 }
 
-std::expected<void, std::string> GetLogged() { return {}; }
+std::string UartReceiver::GetData() { return data_; }
 
-std::expected<std::vector<Coordinates>, std::string> UpdateCoordinates(
-    std::vector<Coordinates> new_coordinates) {
-  return new_coordinates;
+void UartReceiver::run() {
+  QSerialPort serial;
+  while (!quit_) {
+    serial.close();
+    serial.setPortName(tr(port_name_.c_str()));
+    serial.setDataBits(QSerialPort::DataBits::Data8);
+    serial.setParity(QSerialPort::Parity::NoParity);
+    serial.setStopBits(QSerialPort::StopBits::OneStop);
+    serial.setBaudRate(9600);  // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+
+    if (!serial.open(QIODevice::ReadWrite)) {
+      emit error(tr("Can't open %1, error code %2")
+                     .arg(port_name_.c_str())
+                     .arg(serial.error()));
+      return;
+    }
+
+    if (serial.waitForReadyRead(wait_timeout_)) {
+      QByteArray request_data = serial.readAll();
+      while (serial.waitForReadyRead()) request_data += serial.readAll();
+    } else {
+      emit error(tr("Wait read request timeout %1")
+                     .arg(QTime::currentTime().toString()));
+    }
+  }
+}
+
+UartSender::UartSender(QObject *parent) : QThread() {}
+
+void UartSender::Send(const std::string &port, const std::uint8_t timeout,
+                      std::string data) {
+  port_name_ = port;
+  wait_timeout_ = timeout;
+  data_ = data;
+
+  if (!isRunning()) {
+    run();
+  }
+}
+
+std::string UartSender::GetData() { return data_; }
+
+void UartSender::error(const QString &s) {}
+
+void UartSender::run() {
+  QSerialPort serial;
+
+  serial.close();
+  serial.setPortName(tr(port_name_.c_str()));
+  serial.setDataBits(QSerialPort::DataBits::Data8);
+  serial.setParity(QSerialPort::Parity::NoParity);
+  serial.setStopBits(QSerialPort::StopBits::OneStop);
+  serial.setBaudRate(9600);  // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  serial.setFlowControl(QSerialPort::FlowControl::SoftwareControl);
+
+  if (!serial.open(QIODevice::ReadWrite)) {
+    emit error(tr("Can't open %1, error code %2")
+                   .arg(port_name_.c_str())
+                   .arg(serial.error()));
+    return;
+  }
+
+  QByteArray dataByteArray(data_.c_str(), data_.length());  // NOLINT
+  serial.write(dataByteArray);
 }
 
 }  // namespace LeoGeoUsb

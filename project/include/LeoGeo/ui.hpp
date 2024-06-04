@@ -38,23 +38,32 @@ class MainWindow : public QWidget {
   void ChangePassButtonHandler();
 
  private:
+  std::unique_ptr<LeoGeoUsb::UartReceiver> uart_receiver_;
+  std::unique_ptr<LeoGeoUsb::UartSender> uart_sender_;
+
+  std::string password_;
+  std::string serial_port_;
+  keychain::Error keychain_error_;
+
   std::unique_ptr<QPushButton> usb_init_button_;
   std::unique_ptr<QPushButton> log_fetch_button_;
   std::unique_ptr<QPushButton> admin_mode_button_;
   std::unique_ptr<QPushButton> upload_coord_button_;
   std::unique_ptr<QPushButton> exit_admin_button_;
   std::unique_ptr<QPushButton> change_pass_button_;
+
   std::unique_ptr<QErrorMessage> error_message_;
   std::unique_ptr<QMessageBox> message_;
+
   std::unique_ptr<QChart> temp_chart_;
   std::unique_ptr<QChart> humid_chart_;
   std::unique_ptr<QChartView> temp_view_;
   std::unique_ptr<QChartView> humid_view_;
   std::unique_ptr<QLineSeries> temp_series_;
   std::unique_ptr<QLineSeries> humid_series_;
-  std::string password_;
-  keychain::Error keychain_error_;
+
   std::unique_ptr<CoordFrame> coord_frame_;
+
   std::unique_ptr<QBoxLayout> layout_;
   std::unique_ptr<QBoxLayout> button_layout_;
   std::unique_ptr<QBoxLayout> button_top_layout_;

@@ -12,9 +12,12 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSerialPort>
+#include <QStringList>
 #include <QVBoxLayout>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
+#include <QtSerialPort/QSerialPortInfo>
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,6 +35,9 @@ const std::string kUser = "Admin";
 
 MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   using std::make_unique;
+
+  uart_sender_ = make_unique<LeoGeoUsb::UartSender>(this);
+  uart_receiver_ = make_unique<LeoGeoUsb::UartReceiver>(this);
 
   // two horizontal layouts within a vertical layout, i didn't know grid layout
   // is a thing, will have to try
@@ -89,13 +95,13 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   upload_coord_button_ = make_unique<QPushButton>("Upload Coords", this);
   change_pass_button_ = make_unique<QPushButton>("Change Password", this);
 
+  button_bottom_layout_->addWidget(exit_admin_button_.get());
   button_bottom_layout_->addWidget(change_pass_button_.get());
   button_bottom_layout_->addWidget(upload_coord_button_.get());
-  button_bottom_layout_->addWidget(exit_admin_button_.get());
 
   exit_admin_button_->hide();
-  upload_coord_button_->hide();
   change_pass_button_->hide();
+  upload_coord_button_->hide();
 
   // chart chartview contains and displays chart, chart contains and displays
   // lineseries, lineseries contains values
@@ -105,8 +111,8 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   humid_series_ = make_unique<QLineSeries>();
   temp_chart_->legend()->hide();
   humid_chart_->legend()->hide();
-  temp_chart_->setTitle("Temperature");
   humid_chart_->setTitle("Humidity");
+  temp_chart_->setTitle("Temperature");
   temp_chart_->createDefaultAxes();
   humid_chart_->createDefaultAxes();
   temp_chart_->addSeries(temp_series_.get());
@@ -140,11 +146,37 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
 }
 
 void MainWindow::UsbInitButtonHandler() {
-  const auto status = LeoGeoUsb::UsbStart();
-
-  if (!status) {
-    error_message_->showMessage(tr("error_window", status.error().c_str()));
+  QStringList items;
+  foreach (auto &port, QSerialPortInfo::availablePorts()) {
+    items << port.portName();
   }
+
+  bool ok = false;
+  auto selected = QInputDialog::getItem(
+      this, tr("Serial Port"),
+      tr("Choose the serial port you wish to connect with"), items);
+
+  if (!ok) return;
+
+  QSerialPort serial;
+
+  serial.close();
+  serial.setPortName(selected);
+  serial.setDataBits(QSerialPort::DataBits::Data8);
+  serial.setParity(QSerialPort::Parity::NoParity);
+  serial.setStopBits(QSerialPort::StopBits::OneStop);
+  serial.setBaudRate(9600);  // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  serial.setFlowControl(QSerialPort::FlowControl::SoftwareControl);
+
+  if (!serial.open(QIODevice::ReadWrite)) {
+    error_message_->showMessage(
+        tr("Can't open %1, error code %2").arg(selected).arg(serial.error()));
+    return;
+  }
+
+  QByteArray dataByteArray(selected.toStdString().c_str(),
+                           selected.length());  // NOLINT
+  serial.write(dataByteArray);
 }
 
 void MainWindow::LogFetchButtonHandler() {
@@ -204,16 +236,7 @@ void MainWindow::ExitAdminButtonHandler() {
 };
 
 void MainWindow::UploadCoordButtonHandler() {
-  const auto status = LeoGeoUsb::UpdateCoordinates(coord_frame_->GetCoords());
-
-  if (!status) {
-    error_message_->showMessage(tr("error_window", status.error().c_str()));
-  } else {
-    message_->setText(std::format("{}, {}", status.value().end()->latitude,
-                                  status.value().end()->longitude)
-                          .c_str());
-    message_->exec();
-  }
+  uart_receiver_->Receive(serial_port_);
 };
 
 void MainWindow::ChangePassButtonHandler() {
