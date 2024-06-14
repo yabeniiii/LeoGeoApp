@@ -1,5 +1,4 @@
 [requires]
-libusb/1.0.26
 keychain/1.3.0
 
 [generators]

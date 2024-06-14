@@ -5,6 +5,8 @@
 
 #include <QBoxLayout>
 #include <QButtonGroup>
+#include <QDateTime>
+#include <QDateTimeAxis>
 #include <QDoubleSpinBox>
 #include <QErrorMessage>
 #include <QHBoxLayout>
@@ -13,17 +15,28 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <QValueAxis>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
 #include <memory>
 
-#include "LeoGeo/usb_comm.hpp"
-
 namespace LeoGeoUi {
+
+struct Coordinates {
+  double latitude;
+  double longitude;
+};
+
+struct LogData {
+  Coordinates coordinates;
+  double temperature;
+  QDateTime datetime;
+};
 
 class MainWindow;
 class CoordFrame;
 class CoordSet;
+class MapContainer;
 
 class MainWindow : public QWidget {
  public:
@@ -38,7 +51,8 @@ class MainWindow : public QWidget {
   void ChangePassButtonHandler();
 
  private:
-  std::unique_ptr<LeoGeoUsb::Usb> usb_;
+  std::string port_name_;
+
   std::string password_;
   keychain::Error keychain_error_;
 
@@ -53,11 +67,11 @@ class MainWindow : public QWidget {
   std::unique_ptr<QMessageBox> message_;
 
   std::unique_ptr<QChart> temp_chart_;
-  std::unique_ptr<QChart> humid_chart_;
   std::unique_ptr<QChartView> temp_view_;
-  std::unique_ptr<QChartView> humid_view_;
   std::unique_ptr<QLineSeries> temp_series_;
-  std::unique_ptr<QLineSeries> humid_series_;
+  std::unique_ptr<QDateTimeAxis> axis_x_;
+  std::unique_ptr<QValueAxis> axis_y_;
+  std::unique_ptr<MapContainer> map_container_;
 
   std::unique_ptr<CoordFrame> coord_frame_;
 
@@ -70,20 +84,20 @@ class MainWindow : public QWidget {
 class CoordFrame : public QWidget {
  public:
   explicit CoordFrame(QWidget *parent = nullptr);
-  std::vector<LeoGeoUsb::Coordinates> GetCoords();
-
- private slots:
-  void AddCoordSetHandler();
+  std::vector<Coordinates> GetCoords();
 
  private:
-  std::unique_ptr<QPushButton> add_coord_set_button_;
   std::shared_ptr<QVBoxLayout> layout_;
+
+  std::unique_ptr<CoordSet> coord_set_1_;
+  std::unique_ptr<CoordSet> coord_set_2_;
+  std::unique_ptr<CoordSet> coord_set_3_;
 };
 
 class CoordSet : public QWidget {
  public:
   explicit CoordSet(QWidget *parent = nullptr);
-  LeoGeoUsb::Coordinates GetCoordinates();
+  Coordinates GetCoordinates();
 
  private slots:
   void DeleteCoordSetHandler();
@@ -94,6 +108,15 @@ class CoordSet : public QWidget {
   std::unique_ptr<QPushButton> delete_coord_set_button_;
   std::unique_ptr<QDoubleSpinBox> lat_;
   std::unique_ptr<QDoubleSpinBox> long_;
+};
+
+class MapContainer : public QWidget {
+ public:
+  explicit MapContainer(QWidget *parent = nullptr);
+  void UpdateMapImage();
+
+ private:
+  std::unique_ptr<QImage> map_image_;
 };
 
 }  // namespace LeoGeoUi

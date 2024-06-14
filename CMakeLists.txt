@@ -23,7 +23,6 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Charts SerialPort)
-find_package(libusb REQUIRED)
 find_package(keychain REQUIRED)
 
 set(MACOSX_BUNDLE_ICON_FILE AppIcon.icns)
@@ -33,7 +32,7 @@ set_source_files_properties(${App_Icon} PROPERTIES MACOSX_PACKAGE_LOCATION "Reso
 qt_standard_project_setup()
 qt_add_executable(${PROJECT_NAME} MACOSX_BUNDLE ${App_Icon} ${sources} ${includes})
 target_include_directories(${PROJECT_NAME} PRIVATE ${includes})
-target_link_libraries(${PROJECT_NAME} PUBLIC Qt6::Widgets Qt6::Charts Qt6::SerialPort libusb::libusb keychain::keychain)
+target_link_libraries(${PROJECT_NAME} PUBLIC Qt6::Widgets Qt6::Charts Qt6::SerialPort keychain::keychain)
 
 add_compile_options(-fsanitize=address,undefined -g)
 

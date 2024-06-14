@@ -5,6 +5,8 @@
 #include <QApplication>
 #include <QBoxLayout>
 #include <QButtonGroup>
+#include <QDateTime>
+#include <QDateTimeAxis>
 #include <QDoubleSpinBox>
 #include <QErrorMessage>
 #include <QHBoxLayout>
@@ -13,16 +15,12 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSerialPort>
-#include <QStringList>
+#include <QSerialPortInfo>
 #include <QVBoxLayout>
+#include <QValueAxis>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
-#include <QtSerialPort/QSerialPortInfo>
 #include <memory>
-#include <string>
-#include <vector>
-
-#include "LeoGeo/usb_comm.hpp"
 
 namespace LeoGeoUi {
 
@@ -57,22 +55,6 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
 
   password_ = keychain::getPassword(kPackage, kService, kUser, keychain_error_);
 
-  if (keychain_error_.type == keychain::ErrorType::NotFound) {
-    message_->setText(
-        "Administrator password not found in system keychain. Using default "
-        "password, please set "
-        "custom password as soon as possible.");
-
-    message_->exec();
-    password_ = "LeoGeo2024";
-  } else if (keychain_error_) {
-    error_message_->showMessage(
-        tr("error_message",
-           std::format("Keychain error: {}", keychain_error_.message).c_str()));
-
-    QApplication::quit();
-  }
-
   // contains the input boxes and buttons for coordinates, hidden until admin
   // mode
   coord_frame_ = make_unique<CoordFrame>();
@@ -103,24 +85,19 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   // chart chartview contains and displays chart, chart contains and displays
   // lineseries, lineseries contains values
   temp_chart_ = make_unique<QChart>();
-  humid_chart_ = make_unique<QChart>();
   temp_series_ = make_unique<QLineSeries>();
-  humid_series_ = make_unique<QLineSeries>();
   temp_chart_->legend()->hide();
-  humid_chart_->legend()->hide();
-  humid_chart_->setTitle("Humidity");
   temp_chart_->setTitle("Temperature");
-  temp_chart_->createDefaultAxes();
-  humid_chart_->createDefaultAxes();
   temp_chart_->addSeries(temp_series_.get());
-  humid_chart_->addSeries(humid_series_.get());
+  axis_x_ = std::make_unique<QDateTimeAxis>();
+  axis_y_ = std::make_unique<QValueAxis>();
+  axis_x_->setFormat("dd.MM hh:mm");
   temp_view_ = make_unique<QChartView>(temp_chart_.get(), this);
-  humid_view_ = make_unique<QChartView>(humid_chart_.get(), this);
   temp_view_->show();
-  humid_view_->show();
-  layout_->addWidget(temp_view_.get());
-  layout_->addWidget(humid_view_.get());
 
+  map_container_ = std::make_unique<MapContainer>(this);
+
+  layout_->addWidget(temp_view_.get());
   layout_->addWidget(coord_frame_.get());
 
   // assosciating clicking buttons with their corresponding functions.
@@ -140,36 +117,122 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   this->setLayout(layout_.get());
   this->setWindowTitle(tr("main_window_title", "LeoGeo"));
   this->show();
+
+  if (keychain_error_.type == keychain::ErrorType::NotFound) {
+    message_->setText(
+        "Administrator password not found in system keychain. Using default "
+        "password, please set "
+        "custom password as soon as possible.");
+
+    message_->exec();
+    password_ = "LeoGeo2024";
+  } else if (keychain_error_) {
+    error_message_->showMessage(
+        tr("error_message",
+           std::format("Keychain error: {}", keychain_error_.message).c_str()));
+
+    QApplication::quit();
+  }
 }
 
 void MainWindow::UsbInitButtonHandler() {
-  QSerialPort serial_port;
-  serial_port.setParity(QSerialPort::NoParity);
-  serial_port.setPortName(tr("usbserial-110"));
-  serial_port.setBaudRate(9600);  // NOLINT
-  serial_port.setDataBits(QSerialPort::Data8);
-  serial_port.setStopBits(QSerialPort::OneStop);
+  QStringList items;
+  foreach (auto &port, QSerialPortInfo::availablePorts()) {
+    items << port.portName();
+  }
 
-  serial_port.open(QIODevice::ReadWrite);
-  serial_port.write("x");
+  bool ok = false;
+  port_name_ = QInputDialog::getItem(
+                   this, tr("Serial Port"),
+                   tr("Choose the serial port you wish to connect with"), items)
+                   .toStdString();
 }
 
 void MainWindow::LogFetchButtonHandler() {
+  QSerialPort serial_port;
+
+  // configuring serial port, 9600-8-N-1
+  serial_port.setPortName(tr(port_name_.c_str()));
+  serial_port.setParity(QSerialPort::NoParity);
+  serial_port.setBaudRate(QSerialPort::Baud9600);  // NOLINT
+  serial_port.setDataBits(QSerialPort::Data8);
+  serial_port.setStopBits(QSerialPort::OneStop);
+  serial_port.setFlowControl(QSerialPort::NoFlowControl);
+
+  serial_port.open(QIODevice::ReadWrite);
+  // we can guess that once it's ready to send data, it's also ready to receive
+  serial_port.waitForReadyRead();
+  // sending the device a '!' tells it to answer with its data log
+  serial_port.write("!");
+  serial_port.waitForBytesWritten();
+
+  QByteArray data_bytes;
+  while (serial_port.waitForReadyRead(100))  // NOLINT
+    data_bytes.append(serial_port.readAll());
+
+  std::string data_string = data_bytes.toStdString();
+
+  std::vector<LogData> data_vec;
+  while (!data_string.empty()) {
+    qDebug("%s", data_string.c_str());
+    std::string date = data_string.substr(0, data_string.find_first_of(","));
+    if (date == "0") {
+      date = "000000";
+    }
+    int date_d = stoi(date.substr(0, 1));
+    int date_m = stoi(date.substr(2, 3));
+    int date_y = stoi(date.substr(4, 5));  // NOLINT
+    data_string.erase(0, data_string.find_first_of(",") + 1);
+    qDebug("date: %s", date.c_str());
+
+    std::string time = data_string.substr(0, data_string.find_first_of(","));
+    if (time == "0") {
+      time = "000000";
+    }
+    int time_h = stoi(time.substr(0, 1));
+    int time_m = stoi(time.substr(2, 3));
+    int time_s = stoi(time.substr(4, 5));  // NOLINT
+    data_string.erase(0, data_string.find_first_of(",") + 1);
+    qDebug("time: %s", time.c_str());
+
+    double latitude =
+        std::stod(data_string.substr(0, data_string.find_first_of(",")));
+    data_string.erase(0, data_string.find_first_of(",") + 1);
+    qDebug("lat: %f", latitude);
+
+    double longitude =
+        std::stod(data_string.substr(0, data_string.find_first_of(",")));
+    data_string.erase(0, data_string.find_first_of(",") + 1);
+    qDebug("long: %f", longitude);
+
+    // double temperature =
+    //     std::stod(data_string.substr(0, data_string.find_first_of(",")));
+    data_string.erase(0, data_string.find_first_of(";") + 1);
+
+    data_vec.push_back(LogData{Coordinates{latitude, longitude}, 0,
+                               QDateTime(QDate(date_y, date_m, date_d),
+                                         QTime(time_h, time_m, time_s))});
+  }
+
   // i've found removing the lineseries and putting back again is the best way
   // to get the chart to update with new values
   temp_chart_->removeSeries(temp_series_.get());
 
   temp_series_->clear();
-  // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers)
-  // magic numbers for testing graph
-  temp_series_->append(0, 500);
-  temp_series_->append(2, 750);
-  temp_series_->append(3, 1000);
-  temp_series_->append(4, 1100);
-  // NOLINTEND(cppcoreguidelines-avoid-magic-numbers)
+  for (auto datapoint : data_vec) {
+    // NOLINTNEXTLINE
+    temp_series_->append(datapoint.datetime.toMSecsSinceEpoch(),
+                         datapoint.temperature);
+  }
 
   temp_chart_->addSeries(temp_series_.get());
-  temp_chart_->createDefaultAxes();
+  temp_chart_->legend()->hide();
+
+  temp_chart_->addAxis(axis_x_.get(), Qt::AlignBottom);
+  temp_series_->attachAxis(axis_x_.get());
+  temp_chart_->addAxis(axis_y_.get(), Qt::AlignBottom);
+  temp_series_->attachAxis(axis_y_.get());
+
   temp_view_->update();
 }
 
@@ -188,7 +251,6 @@ void MainWindow::AdminModeButtonHandler() {
   if (inputPassword.toStdString() == password_) {
     // just hides both charts and shows all the admin-only buttons, easiest way
     // to do it
-    humid_view_->hide();
     temp_view_->hide();
     admin_mode_button_->setEnabled(false);
     exit_admin_button_->show();
@@ -201,7 +263,6 @@ void MainWindow::AdminModeButtonHandler() {
 }
 
 void MainWindow::ExitAdminButtonHandler() {
-  humid_view_->show();
   temp_view_->show();
   admin_mode_button_->setEnabled(true);
   exit_admin_button_->hide();
@@ -256,29 +317,14 @@ void MainWindow::ChangePassButtonHandler() {
 };
 
 CoordFrame::CoordFrame(QWidget *parent) {
-  using std::make_unique;
-
-  add_coord_set_button_ = make_unique<QPushButton>("Add Coordinate Set", this);
-
-  layout_ = make_unique<QVBoxLayout>();
-  layout_->addWidget(add_coord_set_button_.get());
-
-  connect(add_coord_set_button_.get(), &QPushButton::released, this,
-          &CoordFrame::AddCoordSetHandler);
-
-  this->setLayout(layout_.get());
+  coord_set_1_ = std::make_unique<CoordSet>();
+  coord_set_2_ = std::make_unique<CoordSet>();
+  coord_set_3_ = std::make_unique<CoordSet>();
 }
 
-void CoordFrame::AddCoordSetHandler() {
-  CoordSet *coord_set = new CoordSet(this);  // NOLINT
-  layout_->insertWidget(0, coord_set);
-  coord_set->show();
-}
-
-std::vector<LeoGeoUsb::Coordinates> CoordFrame::GetCoords() {
+std::vector<Coordinates> CoordFrame::GetCoords() {
   // loops through all the numbers entered into whatever number of boxes,
-  // returns them as a vector of LeoGeoUsb::Coordinates
-  using LeoGeoUsb::Coordinates;
+  // returns them as a vector of Coordinates
 
   std::vector<Coordinates> coordinates;
 
@@ -312,28 +358,18 @@ CoordSet::CoordSet(QWidget *parent) : parent_(parent) {
   long_->setDecimals(10);      // NOLINT
   long_->show();
 
-  delete_coord_set_button_ = make_unique<QPushButton>("Delete Set", this);
-  connect(delete_coord_set_button_.get(), &QPushButton::released, this,
-          &CoordSet::DeleteCoordSetHandler);
-
-  layout_->addWidget(delete_coord_set_button_.get());
   layout_->addWidget(lat_.get());
   layout_->addWidget(long_.get());
 
   this->setLayout(layout_.get());
 }
 
-void CoordSet::DeleteCoordSetHandler() {
-  // i'm sure there's a way to do this without needing to make it its own
-  // function, but i don't know what that is and i can't be bothered to find out
-  delete this;
-}
-
-LeoGeoUsb::Coordinates CoordSet::GetCoordinates() {
+Coordinates CoordSet::GetCoordinates() {
   // very sophisticated function, bet you can't guess what it does
-  using LeoGeoUsb::Coordinates;
 
   return Coordinates{lat_->value(), long_->value()};
 }
+
+MapContainer::MapContainer(QWidget *parent) : QWidget(parent) {}
 
 }  // namespace LeoGeoUi
