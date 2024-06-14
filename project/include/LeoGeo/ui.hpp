@@ -38,11 +38,8 @@ class MainWindow : public QWidget {
   void ChangePassButtonHandler();
 
  private:
-  std::unique_ptr<LeoGeoUsb::UartReceiver> uart_receiver_;
-  std::unique_ptr<LeoGeoUsb::UartSender> uart_sender_;
-
+  std::unique_ptr<LeoGeoUsb::Usb> usb_;
   std::string password_;
-  std::string serial_port_;
   keychain::Error keychain_error_;
 
   std::unique_ptr<QPushButton> usb_init_button_;

@@ -1,68 +1,37 @@
-#ifndef LEOGEO_USB_COMM_H_
-#define LEOGEO_USB_COMM_H_
+#pragma once
 
-#include <QMutex>
-#include <QObject>
-#include <QString>
-#include <QThread>
-#include <QWaitCondition>
-#include <cstdint>
+#include <libusb-1.0/libusb.h>
+
+#include <QTime>
 #include <expected>
 #include <string>
+#include <vector>
 
 namespace LeoGeoUsb {
-
-class UartReceiver;
-class UartSender;
-
 struct Coordinates {
   double latitude;
   double longitude;
 };
 
-class UartReceiver : public QThread {
- public:
-  explicit UartReceiver(QObject *parent = nullptr);
-
-  void Receive(const std::string &port, const std::uint8_t timeout = 0);
-
-  std::string GetData();
-
- signals:
-  void request(const QString &s);
-  void error(const QString &s);
-
- private:
-  void run() override;
-
-  std::string port_name_;
-  std::string data_;
-  int wait_timeout_ = 0;
-  bool quit_ = false;
+struct LogData {
+  Coordinates coordinates;
+  double temperature;
+  QTime time;
 };
 
-class UartSender : public QThread {
+class Usb {
  public:
-  explicit UartSender(QObject *parent = nullptr);
-
-  void Send(const std::string &port, const std::uint8_t timeout = 0,
-            const std::string data = "");
-
-  std::string GetData();
-
- signals:
-  void request(const QString &s);
-  void error(const QString &s);
+  explicit Usb();
+  std::expected<std::vector<LogData>, std::string> UsbRetrieve();
+  std::expected<void, std::string> UsbUpload(
+      std::vector<Coordinates>* coordinates);
+  std::string Error();
 
  private:
-  void run() override;
-
-  std::string port_name_;
-  std::string data_;
-  int wait_timeout_ = 0;
-  QWaitCondition wait_condition_;
-  bool quit_ = false;
+  std::string libusb_version_;
+  std::string error_;
+  libusb_device_handle* device_handle_;
+  static constexpr std::uint16_t kP_id = 0x0;
+  static constexpr std::uint16_t kV_id = 0x0;
 };
 }  // namespace LeoGeoUsb
-
-#endif  // LEOGEO_USB_COMM_H_

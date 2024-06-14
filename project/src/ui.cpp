@@ -36,9 +36,6 @@ const std::string kUser = "Admin";
 MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   using std::make_unique;
 
-  uart_sender_ = make_unique<LeoGeoUsb::UartSender>(this);
-  uart_receiver_ = make_unique<LeoGeoUsb::UartReceiver>(this);
-
   // two horizontal layouts within a vertical layout, i didn't know grid layout
   // is a thing, will have to try
   layout_ = make_unique<QBoxLayout>(QBoxLayout::TopToBottom);
@@ -146,37 +143,15 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
 }
 
 void MainWindow::UsbInitButtonHandler() {
-  QStringList items;
-  foreach (auto &port, QSerialPortInfo::availablePorts()) {
-    items << port.portName();
-  }
+  QSerialPort serial_port;
+  serial_port.setParity(QSerialPort::NoParity);
+  serial_port.setPortName(tr("usbserial-110"));
+  serial_port.setBaudRate(9600);  // NOLINT
+  serial_port.setDataBits(QSerialPort::Data8);
+  serial_port.setStopBits(QSerialPort::OneStop);
 
-  bool ok = false;
-  auto selected = QInputDialog::getItem(
-      this, tr("Serial Port"),
-      tr("Choose the serial port you wish to connect with"), items);
-
-  if (!ok) return;
-
-  QSerialPort serial;
-
-  serial.close();
-  serial.setPortName(selected);
-  serial.setDataBits(QSerialPort::DataBits::Data8);
-  serial.setParity(QSerialPort::Parity::NoParity);
-  serial.setStopBits(QSerialPort::StopBits::OneStop);
-  serial.setBaudRate(9600);  // NOLINT(cppcoreguidelines-avoid-magic-numbers)
-  serial.setFlowControl(QSerialPort::FlowControl::SoftwareControl);
-
-  if (!serial.open(QIODevice::ReadWrite)) {
-    error_message_->showMessage(
-        tr("Can't open %1, error code %2").arg(selected).arg(serial.error()));
-    return;
-  }
-
-  QByteArray dataByteArray(selected.toStdString().c_str(),
-                           selected.length());  // NOLINT
-  serial.write(dataByteArray);
+  serial_port.open(QIODevice::ReadWrite);
+  serial_port.write("x");
 }
 
 void MainWindow::LogFetchButtonHandler() {
@@ -235,9 +210,7 @@ void MainWindow::ExitAdminButtonHandler() {
   coord_frame_->hide();
 };
 
-void MainWindow::UploadCoordButtonHandler() {
-  uart_receiver_->Receive(serial_port_);
-};
+void MainWindow::UploadCoordButtonHandler(){};
 
 void MainWindow::ChangePassButtonHandler() {
   // really simple, spawn popup, save input to temporary variable, spawn another
