@@ -14,6 +14,7 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSerialPort>
 #include <QVBoxLayout>
 #include <QValueAxis>
 #include <QtCharts/QChartView>
@@ -51,6 +52,7 @@ class MainWindow : public QWidget {
   void ChangePassButtonHandler();
 
  private:
+  void UartErrorHandler(QSerialPort::SerialPortError error);
   std::string port_name_;
 
   std::string password_;

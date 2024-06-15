@@ -9,6 +9,7 @@
 #include <QDateTimeAxis>
 #include <QDoubleSpinBox>
 #include <QErrorMessage>
+#include <QFile>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QMainWindow>
@@ -20,7 +21,9 @@
 #include <QValueAxis>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
+#include <chrono>
 #include <memory>
+#include <thread>
 
 namespace LeoGeoUi {
 
@@ -115,24 +118,8 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
           &MainWindow::ChangePassButtonHandler);
 
   this->setLayout(layout_.get());
-  this->setWindowTitle(tr("main_window_title", "LeoGeo"));
+  this->setWindowTitle(tr("LeoGeo"));
   this->show();
-
-  if (keychain_error_.type == keychain::ErrorType::NotFound) {
-    message_->setText(
-        "Administrator password not found in system keychain. Using default "
-        "password, please set "
-        "custom password as soon as possible.");
-
-    message_->exec();
-    password_ = "LeoGeo2024";
-  } else if (keychain_error_) {
-    error_message_->showMessage(
-        tr("error_message",
-           std::format("Keychain error: {}", keychain_error_.message).c_str()));
-
-    QApplication::quit();
-  }
 }
 
 void MainWindow::UsbInitButtonHandler() {
@@ -149,6 +136,16 @@ void MainWindow::UsbInitButtonHandler() {
 }
 
 void MainWindow::LogFetchButtonHandler() {
+  bool good_port_name = false;
+  foreach (auto &port, QSerialPortInfo::availablePorts()) {
+    if (port.portName().toStdString() == port_name_) good_port_name = true;
+  }
+  if (!good_port_name) {
+    error_message_->showMessage(
+        tr("Error: invalid or no port name specified. Please select a port "
+           "using the connect button"));
+    return;
+  }
   QSerialPort serial_port;
 
   // configuring serial port, 9600-8-N-1
@@ -159,51 +156,64 @@ void MainWindow::LogFetchButtonHandler() {
   serial_port.setStopBits(QSerialPort::OneStop);
   serial_port.setFlowControl(QSerialPort::NoFlowControl);
 
-  serial_port.open(QIODevice::ReadWrite);
-  // we can guess that once it's ready to send data, it's also ready to receive
-  serial_port.waitForReadyRead();
+  if (!serial_port.open(QIODevice::ReadWrite)) {
+    UartErrorHandler(serial_port.error());
+    return;
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));  // NOLINT
   // sending the device a '!' tells it to answer with its data log
+  // if (serial_port.write("!") == -1) {
+  //   error_message_->showMessage(tr("Device write error"));
+  // }
+  // if (!serial_port.waitForBytesWritten()) {
+  //   UartErrorHandler(serial_port.error());
+  //   return;
+  // }
   serial_port.write("!");
   serial_port.waitForBytesWritten();
 
   QByteArray data_bytes;
-  while (serial_port.waitForReadyRead(100))  // NOLINT
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));  // NOLINT
+  while (serial_port.waitForReadyRead(100))                   // NOLINT
     data_bytes.append(serial_port.readAll());
 
   std::string data_string = data_bytes.toStdString();
+  if (data_string.empty()) {
+    error_message_->showMessage(tr("Received no data"));
+    return;
+  }
 
   std::vector<LogData> data_vec;
+  QFile file("~/LeoGeoData.txt");
+  if (file.exists()) file.remove();
+  if (!file.open(QIODevice::ReadWrite)) {
+    error_message_->showMessage(tr("Error: could not create data file"));
+    return;
+  }
+  QTextStream stream(&file);
+  stream << "date, time, lat, long, sat" << Qt::endl;
   while (!data_string.empty()) {
-    qDebug("%s", data_string.c_str());
+    stream << data_string.substr(0, data_string.find_first_of(";")).c_str()
+           << Qt::endl;
     std::string date = data_string.substr(0, data_string.find_first_of(","));
-    if (date == "0") {
-      date = "000000";
-    }
     int date_d = stoi(date.substr(0, 1));
     int date_m = stoi(date.substr(2, 3));
     int date_y = stoi(date.substr(4, 5));  // NOLINT
     data_string.erase(0, data_string.find_first_of(",") + 1);
-    qDebug("date: %s", date.c_str());
 
     std::string time = data_string.substr(0, data_string.find_first_of(","));
-    if (time == "0") {
-      time = "000000";
-    }
     int time_h = stoi(time.substr(0, 1));
     int time_m = stoi(time.substr(2, 3));
     int time_s = stoi(time.substr(4, 5));  // NOLINT
     data_string.erase(0, data_string.find_first_of(",") + 1);
-    qDebug("time: %s", time.c_str());
 
     double latitude =
         std::stod(data_string.substr(0, data_string.find_first_of(",")));
     data_string.erase(0, data_string.find_first_of(",") + 1);
-    qDebug("lat: %f", latitude);
 
     double longitude =
         std::stod(data_string.substr(0, data_string.find_first_of(",")));
     data_string.erase(0, data_string.find_first_of(",") + 1);
-    qDebug("long: %f", longitude);
 
     // double temperature =
     //     std::stod(data_string.substr(0, data_string.find_first_of(",")));
@@ -213,6 +223,8 @@ void MainWindow::LogFetchButtonHandler() {
                                QDateTime(QDate(date_y, date_m, date_d),
                                          QTime(time_h, time_m, time_s))});
   }
+
+  file.close();
 
   // i've found removing the lineseries and putting back again is the best way
   // to get the chart to update with new values
@@ -237,6 +249,20 @@ void MainWindow::LogFetchButtonHandler() {
 }
 
 void MainWindow::AdminModeButtonHandler() {
+  if (keychain_error_.type == keychain::ErrorType::NotFound) {
+    message_->setText(
+        "Administrator password not found in system keychain. Using default "
+        "password, please set "
+        "custom password as soon as possible.");
+
+    message_->exec();
+    password_ = "LeoGeo2024";
+  } else if (keychain_error_) {
+    error_message_->showMessage(
+        tr(std::format("Keychain error: {}", keychain_error_.message).c_str()));
+
+    QApplication::quit();
+  }
   bool ok = false;  // returns true once user presses ok button in popup
   QString inputPassword = QInputDialog::getText(
       this, "Administrator", "Enter Administrator Password",
@@ -315,6 +341,49 @@ void MainWindow::ChangePassButtonHandler() {
            "Passwords do not match. Password has not been changed."));
   }
 };
+
+void MainWindow::UartErrorHandler(QSerialPort::SerialPortError error) {
+  std::string error_name;
+  switch (error) {
+    case QSerialPort::NoError:
+      error_name = "Timed Out (or NoError)";
+      break;
+    case QSerialPort::DeviceNotFoundError:
+      error_name = "DeviceNotFoundError";
+      break;
+    case QSerialPort::PermissionError:
+      error_name = "PermissionError";
+      break;
+    case QSerialPort::OpenError:
+      error_name = "OpenError";
+      break;
+    case QSerialPort::NotOpenError:
+      error_name = "NotOpenError";
+      break;
+    case QSerialPort::WriteError:
+      error_name = "WriteError";
+      break;
+    case QSerialPort::ReadError:
+      error_name = "ReadError";
+      break;
+    case QSerialPort::ResourceError:
+      error_name = "ResourceError";
+      break;
+    case QSerialPort::UnsupportedOperationError:
+      error_name = "UnsupportedOperationError";
+      break;
+    case QSerialPort::TimeoutError:
+      error_name = "TimeoutError";
+      break;
+    case QSerialPort::UnknownError:
+      error_name = "UnknownError";
+      break;
+  }
+  error_message_->showMessage(
+      tr(std::format("Failed to open serial port: {}, with error: {}",
+                     port_name_, error_name)
+             .c_str()));
+}
 
 CoordFrame::CoordFrame(QWidget *parent) {
   coord_set_1_ = std::make_unique<CoordSet>();
