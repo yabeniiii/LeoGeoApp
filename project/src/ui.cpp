@@ -7,11 +7,13 @@
 #include <QButtonGroup>
 #include <QDateTime>
 #include <QDateTimeAxis>
+#include <QDir>
 #include <QDoubleSpinBox>
 #include <QErrorMessage>
 #include <QFile>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QLabel>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPushButton>
@@ -21,9 +23,14 @@
 #include <QValueAxis>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
+#include <QtNetwork/QNetworkAccessManager>
+#include <QtNetwork/QNetworkReply>
 #include <chrono>
+#include <format>
 #include <memory>
+#include <string>
 #include <thread>
+#include <vector>
 
 namespace LeoGeoUi {
 
@@ -76,14 +83,17 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   exit_admin_button_ = make_unique<QPushButton>("Exit Admin", this);
   upload_coord_button_ = make_unique<QPushButton>("Upload Coords", this);
   change_pass_button_ = make_unique<QPushButton>("Change Password", this);
+  unlock_button_ = make_unique<QPushButton>("Unlock Box", this);
 
   button_bottom_layout_->addWidget(exit_admin_button_.get());
   button_bottom_layout_->addWidget(change_pass_button_.get());
   button_bottom_layout_->addWidget(upload_coord_button_.get());
+  button_bottom_layout_->addWidget(unlock_button_.get());
 
   exit_admin_button_->hide();
   change_pass_button_->hide();
   upload_coord_button_->hide();
+  unlock_button_->hide();
 
   // chart chartview contains and displays chart, chart contains and displays
   // lineseries, lineseries contains values
@@ -102,6 +112,7 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
 
   layout_->addWidget(temp_view_.get());
   layout_->addWidget(coord_frame_.get());
+  layout_->addWidget(map_container_.get());
 
   // assosciating clicking buttons with their corresponding functions.
   connect(usb_init_button_.get(), &QPushButton::clicked, this,
@@ -116,6 +127,8 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
           &MainWindow::ExitAdminButtonHandler);
   connect(change_pass_button_.get(), &QPushButton::clicked, this,
           &MainWindow::ChangePassButtonHandler);
+  connect(unlock_button_.get(), &QPushButton::clicked, this,
+          &MainWindow::UnlockButtonHandler);
 
   this->setLayout(layout_.get());
   this->setWindowTitle(tr("LeoGeo"));
@@ -154,7 +167,7 @@ void MainWindow::LogFetchButtonHandler() {
   serial_port.setBaudRate(QSerialPort::Baud9600);  // NOLINT
   serial_port.setDataBits(QSerialPort::Data8);
   serial_port.setStopBits(QSerialPort::OneStop);
-  serial_port.setFlowControl(QSerialPort::NoFlowControl);
+  serial_port.setFlowControl(QSerialPort::SoftwareControl);
 
   if (!serial_port.open(QIODevice::ReadWrite)) {
     UartErrorHandler(serial_port.error());
@@ -162,20 +175,24 @@ void MainWindow::LogFetchButtonHandler() {
   }
   std::this_thread::sleep_for(std::chrono::milliseconds(500));  // NOLINT
   // sending the device a '!' tells it to answer with its data log
-  // if (serial_port.write("!") == -1) {
-  //   error_message_->showMessage(tr("Device write error"));
-  // }
-  // if (!serial_port.waitForBytesWritten()) {
-  //   UartErrorHandler(serial_port.error());
-  //   return;
-  // }
-  serial_port.write("!");
-  serial_port.waitForBytesWritten();
+  if (serial_port.write("!") == -1) {
+    error_message_->showMessage(tr("Device write error"));
+  }
+  if (!serial_port.waitForBytesWritten()) {
+    UartErrorHandler(serial_port.error());
+    return;
+  }
 
   QByteArray data_bytes;
-  std::this_thread::sleep_for(std::chrono::milliseconds(5));  // NOLINT
-  while (serial_port.waitForReadyRead(100))                   // NOLINT
+  serial_port.waitForReadyRead(2000);  // NOLINT
+  data_bytes.append(serial_port.readAll());
+  while (serial_port.waitForReadyRead(500)) {  // NOLINT
     data_bytes.append(serial_port.readAll());
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));  // NOLINT
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));  // NOLINT
+  data_bytes.append(serial_port.readAll());
+  serial_port.close();
 
   std::string data_string = data_bytes.toStdString();
   if (data_string.empty()) {
@@ -183,15 +200,15 @@ void MainWindow::LogFetchButtonHandler() {
     return;
   }
 
-  std::vector<LogData> data_vec;
-  QFile file("~/LeoGeoData.txt");
+  QFile file(QDir::homePath() + "/LeoGeoData.csv");
   if (file.exists()) file.remove();
   if (!file.open(QIODevice::ReadWrite)) {
+    auto error = file.error();  // NOLINT
     error_message_->showMessage(tr("Error: could not create data file"));
     return;
   }
   QTextStream stream(&file);
-  stream << "date, time, lat, long, sat" << Qt::endl;
+  stream << "date, time, latitude, longitude, temperature" << Qt::endl;
   while (!data_string.empty()) {
     stream << data_string.substr(0, data_string.find_first_of(";")).c_str()
            << Qt::endl;
@@ -215,13 +232,13 @@ void MainWindow::LogFetchButtonHandler() {
         std::stod(data_string.substr(0, data_string.find_first_of(",")));
     data_string.erase(0, data_string.find_first_of(",") + 1);
 
-    // double temperature =
-    //     std::stod(data_string.substr(0, data_string.find_first_of(",")));
+    double temperature =
+        std::stod(data_string.substr(0, data_string.find_first_of(";")));
     data_string.erase(0, data_string.find_first_of(";") + 1);
 
-    data_vec.push_back(LogData{Coordinates{latitude, longitude}, 0,
-                               QDateTime(QDate(date_y, date_m, date_d),
-                                         QTime(time_h, time_m, time_s))});
+    log_vector_.push_back(LogData{Coordinates{latitude, longitude}, temperature,
+                                  QDateTime(QDate(date_y, date_m, date_d),
+                                            QTime(time_h, time_m, time_s))});
   }
 
   file.close();
@@ -231,7 +248,7 @@ void MainWindow::LogFetchButtonHandler() {
   temp_chart_->removeSeries(temp_series_.get());
 
   temp_series_->clear();
-  for (auto datapoint : data_vec) {
+  for (auto datapoint : log_vector_) {
     // NOLINTNEXTLINE
     temp_series_->append(datapoint.datetime.toMSecsSinceEpoch(),
                          datapoint.temperature);
@@ -246,6 +263,27 @@ void MainWindow::LogFetchButtonHandler() {
   temp_series_->attachAxis(axis_y_.get());
 
   temp_view_->update();
+
+  std::string image_url =
+      "https://maps.googleapis.com/maps/api/"
+      "staticmap?center=51.978222,5.914861&scale=2&zoom=12&size=640x640&"
+      "maptype=satellite&key=AIzaSyDAHENFKMG6TTIBHi3AfdpGlnx-U4V5FNI&markers="
+      "size:tiny%7Ccolor:blue";
+  foreach (auto &logdata, log_vector_) {
+    image_url.append(std::format("%7C{},{}", logdata.coordinates.latitude,
+                                 logdata.coordinates.longitude));
+  }
+
+  auto map_image_ = std::make_unique<QWebEngineView>(this);
+  layout_->addWidget(map_image_.get());
+  layout_->setStretch(0, 1);
+
+  map_image_->load(QUrl(image_url.c_str()));
+  map_image_->setMinimumSize(500, 500);  // NOLINT
+  map_image_->setMaximumSize(500, 500);  // NOLINT
+  map_image_->resize(500, 500);          // NOLINT
+  map_image_->show();
+  this->show();
 }
 
 void MainWindow::AdminModeButtonHandler() {
@@ -282,6 +320,7 @@ void MainWindow::AdminModeButtonHandler() {
     exit_admin_button_->show();
     upload_coord_button_->show();
     change_pass_button_->show();
+    unlock_button_->show();
     coord_frame_->show();
   } else {
     error_message_->showMessage(tr("error_window", "Incorrect Password"));
@@ -294,10 +333,76 @@ void MainWindow::ExitAdminButtonHandler() {
   exit_admin_button_->hide();
   upload_coord_button_->hide();
   change_pass_button_->hide();
+  unlock_button_->hide();
   coord_frame_->hide();
 };
 
-void MainWindow::UploadCoordButtonHandler(){};
+void MainWindow::UploadCoordButtonHandler() {
+  bool good_port_name = false;
+  foreach (auto &port, QSerialPortInfo::availablePorts()) {
+    if (port.portName().toStdString() == port_name_) good_port_name = true;
+  }
+  if (!good_port_name) {
+    error_message_->showMessage(
+        tr("Error: invalid or no port name specified. Please select a port "
+           "using the connect button"));
+    return;
+  }
+  QSerialPort serial_port;
+
+  // configuring serial port, 9600-8-N-1
+  serial_port.setPortName(tr(port_name_.c_str()));
+  serial_port.setParity(QSerialPort::NoParity);
+  serial_port.setBaudRate(QSerialPort::Baud9600);  // NOLINT
+  serial_port.setDataBits(QSerialPort::Data8);
+  serial_port.setStopBits(QSerialPort::OneStop);
+  serial_port.setFlowControl(QSerialPort::SoftwareControl);
+
+  if (!serial_port.open(QIODevice::ReadWrite)) {
+    UartErrorHandler(serial_port.error());
+    return;
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));  // NOLINT
+  // sending the device a '@' tells it get ready to receive new coordinates
+  if (serial_port.write("@") == -1) {
+    error_message_->showMessage(tr("Device write error"));
+  }
+  if (!serial_port.waitForBytesWritten()) {
+    UartErrorHandler(serial_port.error());
+    return;
+  }
+
+  if (serial_port.write(coord_frame_->GetCoords().c_str()) == -1) {
+    error_message_->showMessage(tr("Device write error"));
+  }
+  if (!serial_port.waitForBytesWritten()) {
+    UartErrorHandler(serial_port.error());
+    return;
+  }
+
+  if (serial_port.write("\n\r") == -1) {
+    error_message_->showMessage(tr("Device write error"));
+  }
+  if (!serial_port.waitForBytesWritten()) {
+    UartErrorHandler(serial_port.error());
+    return;
+  }
+
+  QByteArray data_bytes;
+  int loop_num = 0;
+  while (data_bytes.toStdString() != "Da") {
+    if (loop_num >= 50) {  // NOLINT
+      break;
+    }
+    serial_port.waitForReadyRead(1000);          // NOLINT
+    while (serial_port.waitForReadyRead(100)) {  // NOLINT
+      data_bytes.append(serial_port.readAll());
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));  // NOLINT
+    loop_num++;
+  }
+  serial_port.close();
+};
 
 void MainWindow::ChangePassButtonHandler() {
   // really simple, spawn popup, save input to temporary variable, spawn another
@@ -342,6 +447,57 @@ void MainWindow::ChangePassButtonHandler() {
   }
 };
 
+void MainWindow::UnlockButtonHandler() {
+  bool good_port_name = false;
+  foreach (auto &port, QSerialPortInfo::availablePorts()) {
+    if (port.portName().toStdString() == port_name_) good_port_name = true;
+  }
+  if (!good_port_name) {
+    error_message_->showMessage(
+        tr("Error: invalid or no port name specified. Please select a port "
+           "using the connect button"));
+    return;
+  }
+  QSerialPort serial_port;
+
+  // configuring serial port, 9600-8-N-1
+  serial_port.setPortName(tr(port_name_.c_str()));
+  serial_port.setParity(QSerialPort::NoParity);
+  serial_port.setBaudRate(QSerialPort::Baud9600);  // NOLINT
+  serial_port.setDataBits(QSerialPort::Data8);
+  serial_port.setStopBits(QSerialPort::OneStop);
+  serial_port.setFlowControl(QSerialPort::SoftwareControl);
+
+  if (!serial_port.open(QIODevice::ReadWrite)) {
+    UartErrorHandler(serial_port.error());
+    return;
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));  // NOLINT
+  // sending the device a '%' tells it to unlock the box
+  if (serial_port.write("%") == -1) {
+    error_message_->showMessage(tr("Device write error"));
+  }
+  if (!serial_port.waitForBytesWritten()) {
+    UartErrorHandler(serial_port.error());
+    return;
+  }
+  QByteArray data_bytes;
+  int loop_num = 0;
+  while (data_bytes.toStdString() != "Da") {
+    if (loop_num >= 50) {  // NOLINT
+      break;
+    }
+    serial_port.waitForReadyRead(1000);          // NOLINT
+    while (serial_port.waitForReadyRead(100)) {  // NOLINT
+      data_bytes.append(serial_port.readAll());
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));  // NOLINT
+    qDebug() << data_bytes.toStdString() << Qt::endl;
+    loop_num++;
+  }
+  serial_port.close();
+}
+
 void MainWindow::UartErrorHandler(QSerialPort::SerialPortError error) {
   std::string error_name;
   switch (error) {
@@ -385,24 +541,33 @@ void MainWindow::UartErrorHandler(QSerialPort::SerialPortError error) {
              .c_str()));
 }
 
+std::vector<LogData> MainWindow::LogVector() { return log_vector_; }
+
 CoordFrame::CoordFrame(QWidget *parent) {
+  layout_ = std::make_unique<QVBoxLayout>();
+  label_layout_ = std::make_unique<QHBoxLayout>();
+  lat_label_ = std::make_unique<QLabel>("Latitude:");
+  long_label_ = std::make_unique<QLabel>("Longitude:");
+  label_layout_->addWidget(lat_label_.get());
+  label_layout_->addWidget(long_label_.get());
+  layout_->addLayout(label_layout_.get());
   coord_set_1_ = std::make_unique<CoordSet>();
+  layout_->addWidget(coord_set_1_.get());
   coord_set_2_ = std::make_unique<CoordSet>();
+  layout_->addWidget(coord_set_2_.get());
   coord_set_3_ = std::make_unique<CoordSet>();
+  layout_->addWidget(coord_set_3_.get());
+  this->setLayout(layout_.get());
 }
 
-std::vector<Coordinates> CoordFrame::GetCoords() {
-  // loops through all the numbers entered into whatever number of boxes,
-  // returns them as a vector of Coordinates
-
-  std::vector<Coordinates> coordinates;
-
-  for (int i = 0; i < layout_->count(); i++) {
-    coordinates.push_back(dynamic_cast<CoordSet *>(layout_->itemAt(i)->widget())
-                              ->GetCoordinates());
-  }
-
-  return coordinates;
+std::string CoordFrame::GetCoords() {
+  return std::format("{},{},{},{},{},{}",
+                     coord_set_1_->GetCoordinates().latitude,
+                     coord_set_1_->GetCoordinates().longitude,
+                     coord_set_2_->GetCoordinates().latitude,
+                     coord_set_2_->GetCoordinates().longitude,
+                     coord_set_3_->GetCoordinates().latitude,
+                     coord_set_3_->GetCoordinates().longitude);
 }
 
 CoordSet::CoordSet(QWidget *parent) : parent_(parent) {
@@ -439,6 +604,20 @@ Coordinates CoordSet::GetCoordinates() {
   return Coordinates{lat_->value(), long_->value()};
 }
 
-MapContainer::MapContainer(QWidget *parent) : QWidget(parent) {}
+MapContainer::MapContainer(MainWindow *parent) : QWidget(parent) {
+  std::string image_url =
+      "https://maps.googleapis.com/maps/api/"
+      "staticmap?center=51.978222,5.914861&scale=2&zoom=12&size=640x640&"
+      "maptype=satellite&key=AIzaSyDAHENFKMG6TTIBHi3AfdpGlnx-U4V5FNI&markers="
+      "size:tiny%7Ccolor:blue";
+  foreach (auto &logdata, parent->LogVector()) {
+    image_url.append(std::format("%7C{},{}", logdata.coordinates.latitude,
+                                 logdata.coordinates.longitude));
+  }
+  map_image_ = std::make_unique<QWebEngineView>(this);
+  map_image_->load(QUrl(image_url.c_str()));
+  map_image_->show();
 
+  this->show();
+}
 }  // namespace LeoGeoUi

@@ -11,15 +11,18 @@
 #include <QErrorMessage>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QLabel>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSerialPort>
 #include <QVBoxLayout>
 #include <QValueAxis>
+#include <QWebEngineView>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
 #include <memory>
+#include <vector>
 
 namespace LeoGeoUi {
 
@@ -42,6 +45,7 @@ class MapContainer;
 class MainWindow : public QWidget {
  public:
   explicit MainWindow(QWidget *parent = nullptr);
+  std::vector<LogData> LogVector();
 
  private slots:
   void UsbInitButtonHandler();
@@ -50,10 +54,12 @@ class MainWindow : public QWidget {
   void ExitAdminButtonHandler();
   void UploadCoordButtonHandler();
   void ChangePassButtonHandler();
+  void UnlockButtonHandler();
 
  private:
   void UartErrorHandler(QSerialPort::SerialPortError error);
   std::string port_name_;
+  std::vector<LogData> log_vector_;
 
   std::string password_;
   keychain::Error keychain_error_;
@@ -64,6 +70,7 @@ class MainWindow : public QWidget {
   std::unique_ptr<QPushButton> upload_coord_button_;
   std::unique_ptr<QPushButton> exit_admin_button_;
   std::unique_ptr<QPushButton> change_pass_button_;
+  std::unique_ptr<QPushButton> unlock_button_;
 
   std::unique_ptr<QErrorMessage> error_message_;
   std::unique_ptr<QMessageBox> message_;
@@ -86,10 +93,14 @@ class MainWindow : public QWidget {
 class CoordFrame : public QWidget {
  public:
   explicit CoordFrame(QWidget *parent = nullptr);
-  std::vector<Coordinates> GetCoords();
+  std::string GetCoords();
 
  private:
-  std::shared_ptr<QVBoxLayout> layout_;
+  std::unique_ptr<QVBoxLayout> layout_;
+  std::unique_ptr<QHBoxLayout> label_layout_;
+
+  std::unique_ptr<QLabel> lat_label_;
+  std::unique_ptr<QLabel> long_label_;
 
   std::unique_ptr<CoordSet> coord_set_1_;
   std::unique_ptr<CoordSet> coord_set_2_;
@@ -114,11 +125,11 @@ class CoordSet : public QWidget {
 
 class MapContainer : public QWidget {
  public:
-  explicit MapContainer(QWidget *parent = nullptr);
+  explicit MapContainer(MainWindow *parent = nullptr);
   void UpdateMapImage();
 
  private:
-  std::unique_ptr<QImage> map_image_;
+  std::unique_ptr<QWebEngineView> map_image_;
 };
 
 }  // namespace LeoGeoUi
