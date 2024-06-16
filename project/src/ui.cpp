@@ -10,7 +10,6 @@
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QErrorMessage>
-#include <QFile>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
@@ -21,18 +20,41 @@
 #include <QSerialPortInfo>
 #include <QVBoxLayout>
 #include <QValueAxis>
+#include <QWebEngineView>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
-#include <QtNetwork/QNetworkAccessManager>
-#include <QtNetwork/QNetworkReply>
 #include <chrono>
-#include <format>
 #include <memory>
-#include <string>
 #include <thread>
 #include <vector>
 
 namespace LeoGeoUi {
+
+namespace {
+// clang-format off
+// NOLINTNEXTLINE
+constexpr char html[] =
+      R"(
+        <!DOCTYPE html>
+        <html> 
+          <head>
+            <title>Logged Data Map</title>
+            <script src='https://maps.googleapis.com/maps/api/js?key=AIzaSyDAHENFKMG6TTIBHi3AfdpGlnx-U4V5FNI&callback=initMap' async defer></script>
+            <script>
+              let map;
+              function initMap() {{
+                map = new google.maps.Map(document.getElementById('map'), {{ zoom: 12, center: {{lat: 51.98, lng: 5.91}} }});
+                {}
+              }}
+            </script>
+          </head>
+          <body>
+            <div id='map' style='height: 500px; width: 100%;'></div>
+          </body>
+        </html>
+      )";
+// clang-format on
+}  // namespace
 
 namespace {
 // details used to store password in system keychain
@@ -272,22 +294,18 @@ void MainWindow::LogFetchButtonHandler() {
 
   temp_view_->update();
 
-  std::string image_url =
-      "https://maps.googleapis.com/maps/api/"
-      "staticmap?scale=2&zoom=14&size=640x640&"
-      "maptype=satellite&key=AIzaSyDAHENFKMG6TTIBHi3AfdpGlnx-U4V5FNI";
-  image_url.append(std::format("&center={},{}",
-                               log_vector_[0].coordinates.latitude,
-                               log_vector_[0].coordinates.longitude));
-  image_url.append("&markers=size:tiny%7Ccolor:blue");
+  std::string markers_js;
   foreach (auto &logdata, log_vector_) {
-    image_url.append(std::format("%7C{},{}", logdata.coordinates.latitude,
-                                 logdata.coordinates.longitude));
+    markers_js += std::format(
+        "new google.maps.Marker({{ position: {{lat: {}, lng: {}}}, map: map "
+        "}});\n",
+        logdata.coordinates.latitude, logdata.coordinates.longitude);
   }
 
   layout_->addWidget(map_view_.get());
 
-  map_view_->load(QUrl(image_url.c_str()));
+  auto request_html = std::format(html, markers_js);
+  map_view_->setHtml(request_html.c_str());
   switch_data_view_button_->setEnabled(true);
   this->show();
 }
