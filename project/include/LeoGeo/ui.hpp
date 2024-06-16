@@ -40,7 +40,6 @@ struct LogData {
 class MainWindow;
 class CoordFrame;
 class CoordSet;
-class MapContainer;
 
 class MainWindow : public QWidget {
  public:
@@ -55,6 +54,7 @@ class MainWindow : public QWidget {
   void UploadCoordButtonHandler();
   void ChangePassButtonHandler();
   void UnlockButtonHandler();
+  void DataSwitchButtonHandler();
 
  private:
   void UartErrorHandler(QSerialPort::SerialPortError error);
@@ -64,6 +64,7 @@ class MainWindow : public QWidget {
   std::string password_;
   keychain::Error keychain_error_;
 
+  std::unique_ptr<QWebEngineView> map_view_;
   std::unique_ptr<QPushButton> usb_init_button_;
   std::unique_ptr<QPushButton> log_fetch_button_;
   std::unique_ptr<QPushButton> admin_mode_button_;
@@ -71,6 +72,7 @@ class MainWindow : public QWidget {
   std::unique_ptr<QPushButton> exit_admin_button_;
   std::unique_ptr<QPushButton> change_pass_button_;
   std::unique_ptr<QPushButton> unlock_button_;
+  std::unique_ptr<QPushButton> switch_data_view_button_;
 
   std::unique_ptr<QErrorMessage> error_message_;
   std::unique_ptr<QMessageBox> message_;
@@ -80,7 +82,6 @@ class MainWindow : public QWidget {
   std::unique_ptr<QLineSeries> temp_series_;
   std::unique_ptr<QDateTimeAxis> axis_x_;
   std::unique_ptr<QValueAxis> axis_y_;
-  std::unique_ptr<MapContainer> map_container_;
 
   std::unique_ptr<CoordFrame> coord_frame_;
 
@@ -121,15 +122,6 @@ class CoordSet : public QWidget {
   std::unique_ptr<QPushButton> delete_coord_set_button_;
   std::unique_ptr<QDoubleSpinBox> lat_;
   std::unique_ptr<QDoubleSpinBox> long_;
-};
-
-class MapContainer : public QWidget {
- public:
-  explicit MapContainer(MainWindow *parent = nullptr);
-  void UpdateMapImage();
-
- private:
-  std::unique_ptr<QWebEngineView> map_image_;
 };
 
 }  // namespace LeoGeoUi

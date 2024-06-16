@@ -50,7 +50,10 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   button_layout_ = make_unique<QBoxLayout>(QBoxLayout::TopToBottom);
   button_top_layout_ = make_unique<QBoxLayout>(QBoxLayout::LeftToRight);
   button_bottom_layout_ = make_unique<QBoxLayout>(QBoxLayout::LeftToRight);
+  map_view_ = std::make_unique<QWebEngineView>(this);
+  map_view_->hide();
 
+  layout_->addWidget(map_view_.get());
   button_layout_->addLayout(button_top_layout_.get());
   button_layout_->addLayout(button_bottom_layout_.get());
 
@@ -75,10 +78,13 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   usb_init_button_ = make_unique<QPushButton>("Connect", this);
   log_fetch_button_ = make_unique<QPushButton>("Fetch Logs", this);
   admin_mode_button_ = make_unique<QPushButton>("Admin Mode", this);
+  switch_data_view_button_ = make_unique<QPushButton>("Switch Data View", this);
+  switch_data_view_button_->setEnabled(false);
 
   button_top_layout_->addWidget(usb_init_button_.get());
   button_top_layout_->addWidget(log_fetch_button_.get());
   button_top_layout_->addWidget(admin_mode_button_.get());
+  button_top_layout_->addWidget(switch_data_view_button_.get());
 
   exit_admin_button_ = make_unique<QPushButton>("Exit Admin", this);
   upload_coord_button_ = make_unique<QPushButton>("Upload Coords", this);
@@ -108,11 +114,8 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   temp_view_ = make_unique<QChartView>(temp_chart_.get(), this);
   temp_view_->show();
 
-  map_container_ = std::make_unique<MapContainer>(this);
-
   layout_->addWidget(temp_view_.get());
   layout_->addWidget(coord_frame_.get());
-  layout_->addWidget(map_container_.get());
 
   // assosciating clicking buttons with their corresponding functions.
   connect(usb_init_button_.get(), &QPushButton::clicked, this,
@@ -129,7 +132,13 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
           &MainWindow::ChangePassButtonHandler);
   connect(unlock_button_.get(), &QPushButton::clicked, this,
           &MainWindow::UnlockButtonHandler);
+  connect(switch_data_view_button_.get(), &QPushButton::clicked, this,
+          &MainWindow::DataSwitchButtonHandler);
 
+  temp_view_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  map_view_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  layout_->setStretch(0, 0);
+  layout_->setStretch(2, 4);
   this->setLayout(layout_.get());
   this->setWindowTitle(tr("LeoGeo"));
   this->show();
@@ -256,7 +265,6 @@ void MainWindow::LogFetchButtonHandler() {
 
   temp_chart_->addSeries(temp_series_.get());
   temp_chart_->legend()->hide();
-
   temp_chart_->addAxis(axis_x_.get(), Qt::AlignBottom);
   temp_series_->attachAxis(axis_x_.get());
   temp_chart_->addAxis(axis_y_.get(), Qt::AlignBottom);
@@ -266,23 +274,21 @@ void MainWindow::LogFetchButtonHandler() {
 
   std::string image_url =
       "https://maps.googleapis.com/maps/api/"
-      "staticmap?center=51.978222,5.914861&scale=2&zoom=12&size=640x640&"
-      "maptype=satellite&key=AIzaSyDAHENFKMG6TTIBHi3AfdpGlnx-U4V5FNI&markers="
-      "size:tiny%7Ccolor:blue";
+      "staticmap?scale=2&zoom=14&size=640x640&"
+      "maptype=satellite&key=AIzaSyDAHENFKMG6TTIBHi3AfdpGlnx-U4V5FNI";
+  image_url.append(std::format("&center={},{}",
+                               log_vector_[0].coordinates.latitude,
+                               log_vector_[0].coordinates.longitude));
+  image_url.append("&markers=size:tiny%7Ccolor:blue");
   foreach (auto &logdata, log_vector_) {
     image_url.append(std::format("%7C{},{}", logdata.coordinates.latitude,
                                  logdata.coordinates.longitude));
   }
 
-  auto map_image_ = std::make_unique<QWebEngineView>(this);
-  layout_->addWidget(map_image_.get());
-  layout_->setStretch(0, 1);
+  layout_->addWidget(map_view_.get());
 
-  map_image_->load(QUrl(image_url.c_str()));
-  map_image_->setMinimumSize(500, 500);  // NOLINT
-  map_image_->setMaximumSize(500, 500);  // NOLINT
-  map_image_->resize(500, 500);          // NOLINT
-  map_image_->show();
+  map_view_->load(QUrl(image_url.c_str()));
+  switch_data_view_button_->setEnabled(true);
   this->show();
 }
 
@@ -316,7 +322,9 @@ void MainWindow::AdminModeButtonHandler() {
     // just hides both charts and shows all the admin-only buttons, easiest way
     // to do it
     temp_view_->hide();
+    map_view_->hide();
     admin_mode_button_->setEnabled(false);
+    switch_data_view_button_->setEnabled(false);
     exit_admin_button_->show();
     upload_coord_button_->show();
     change_pass_button_->show();
@@ -330,6 +338,7 @@ void MainWindow::AdminModeButtonHandler() {
 void MainWindow::ExitAdminButtonHandler() {
   temp_view_->show();
   admin_mode_button_->setEnabled(true);
+  switch_data_view_button_->setEnabled(true);
   exit_admin_button_->hide();
   upload_coord_button_->hide();
   change_pass_button_->hide();
@@ -498,6 +507,16 @@ void MainWindow::UnlockButtonHandler() {
   serial_port.close();
 }
 
+void MainWindow::DataSwitchButtonHandler() {
+  if (map_view_->isVisible()) {
+    map_view_->hide();
+    temp_view_->show();
+  } else {
+    map_view_->show();
+    temp_view_->hide();
+  }
+}
+
 void MainWindow::UartErrorHandler(QSerialPort::SerialPortError error) {
   std::string error_name;
   switch (error) {
@@ -602,22 +621,5 @@ Coordinates CoordSet::GetCoordinates() {
   // very sophisticated function, bet you can't guess what it does
 
   return Coordinates{lat_->value(), long_->value()};
-}
-
-MapContainer::MapContainer(MainWindow *parent) : QWidget(parent) {
-  std::string image_url =
-      "https://maps.googleapis.com/maps/api/"
-      "staticmap?center=51.978222,5.914861&scale=2&zoom=12&size=640x640&"
-      "maptype=satellite&key=AIzaSyDAHENFKMG6TTIBHi3AfdpGlnx-U4V5FNI&markers="
-      "size:tiny%7Ccolor:blue";
-  foreach (auto &logdata, parent->LogVector()) {
-    image_url.append(std::format("%7C{},{}", logdata.coordinates.latitude,
-                                 logdata.coordinates.longitude));
-  }
-  map_image_ = std::make_unique<QWebEngineView>(this);
-  map_image_->load(QUrl(image_url.c_str()));
-  map_image_->show();
-
-  this->show();
 }
 }  // namespace LeoGeoUi
