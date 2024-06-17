@@ -1,6 +1,7 @@
 set(sources 
   project/src/main.cpp
-  project/src/ui.cpp
+  project/src/mainWindow.cpp
+  project/src/coordFrame.cpp
 )
 
 set(includes

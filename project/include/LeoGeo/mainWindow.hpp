@@ -1,5 +1,4 @@
-#ifndef LEOGEO_UI_H_
-#define LEOGEO_UI_H_
+#pragma once
 
 #include <keychain/keychain.h>
 
@@ -24,7 +23,7 @@
 #include <memory>
 #include <vector>
 
-namespace LeoGeoUi {
+#include "LeoGeo/coordFrame.hpp"
 
 struct Coordinates {
   double latitude;
@@ -38,13 +37,10 @@ struct LogData {
 };
 
 class MainWindow;
-class CoordFrame;
-class CoordSet;
 
 class MainWindow : public QWidget {
  public:
   explicit MainWindow(QWidget *parent = nullptr);
-  std::vector<LogData> LogVector();
 
  private slots:
   void UsbInitButtonHandler();
@@ -58,13 +54,15 @@ class MainWindow : public QWidget {
 
  private:
   void UartErrorHandler(QSerialPort::SerialPortError error);
+  void ParseData(std::string data_string);
+  void BuildWebView();
+  void BuildChart();
+
   std::string port_name_;
   std::vector<LogData> log_vector_;
-
   std::string password_;
   keychain::Error keychain_error_;
 
-  std::unique_ptr<QWebEngineView> map_view_;
   std::unique_ptr<QPushButton> usb_init_button_;
   std::unique_ptr<QPushButton> log_fetch_button_;
   std::unique_ptr<QPushButton> admin_mode_button_;
@@ -77,53 +75,16 @@ class MainWindow : public QWidget {
   std::unique_ptr<QErrorMessage> error_message_;
   std::unique_ptr<QMessageBox> message_;
 
-  std::unique_ptr<QChart> temp_chart_;
+  std::unique_ptr<QWebEngineView> map_view_;
   std::unique_ptr<QChartView> temp_view_;
+  std::unique_ptr<QChart> temp_chart_;
   std::unique_ptr<QLineSeries> temp_series_;
   std::unique_ptr<QDateTimeAxis> axis_x_;
   std::unique_ptr<QValueAxis> axis_y_;
 
   std::unique_ptr<CoordFrame> coord_frame_;
-
   std::unique_ptr<QBoxLayout> layout_;
   std::unique_ptr<QBoxLayout> button_layout_;
   std::unique_ptr<QBoxLayout> button_top_layout_;
   std::unique_ptr<QBoxLayout> button_bottom_layout_;
 };
-
-class CoordFrame : public QWidget {
- public:
-  explicit CoordFrame(QWidget *parent = nullptr);
-  std::string GetCoords();
-
- private:
-  std::unique_ptr<QVBoxLayout> layout_;
-  std::unique_ptr<QHBoxLayout> label_layout_;
-
-  std::unique_ptr<QLabel> lat_label_;
-  std::unique_ptr<QLabel> long_label_;
-
-  std::unique_ptr<CoordSet> coord_set_1_;
-  std::unique_ptr<CoordSet> coord_set_2_;
-  std::unique_ptr<CoordSet> coord_set_3_;
-};
-
-class CoordSet : public QWidget {
- public:
-  explicit CoordSet(QWidget *parent = nullptr);
-  Coordinates GetCoordinates();
-
- private slots:
-  void DeleteCoordSetHandler();
-
- private:
-  QWidget *parent_;
-  std::unique_ptr<QHBoxLayout> layout_;
-  std::unique_ptr<QPushButton> delete_coord_set_button_;
-  std::unique_ptr<QDoubleSpinBox> lat_;
-  std::unique_ptr<QDoubleSpinBox> long_;
-};
-
-}  // namespace LeoGeoUi
-
-#endif  // LEOGEO_UI_H_

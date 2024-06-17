@@ -4,3 +4,4 @@ compile_commands.json
 docs
 .DS_Store
 CMakeUserPresets.json
+.env

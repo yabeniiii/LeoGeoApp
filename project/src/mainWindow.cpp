@@ -1,4 +1,4 @@
-#include "LeoGeo/ui.hpp"
+#include "LeoGeo/mainWindow.hpp"
 
 #include <keychain/keychain.h>
 
@@ -24,39 +24,38 @@
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
 #include <chrono>
+#include <cstdlib>
 #include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 
-namespace LeoGeoUi {
+#include "LeoGeo/../../../.env"
 
 namespace {
 // clang-format off
-// NOLINTNEXTLINE
+//NOLINTNEXTLINE
 constexpr char html[] =
-      R"(
-        <!DOCTYPE html>
-        <html> 
-          <head>
-            <title>Logged Data Map</title>
-            <script src='https://maps.googleapis.com/maps/api/js?key=AIzaSyDAHENFKMG6TTIBHi3AfdpGlnx-U4V5FNI&callback=initMap' async defer></script>
-            <script>
-              let map;
-              function initMap() {{
-                map = new google.maps.Map(document.getElementById('map'), {{ zoom: 12, center: {{lat: 51.98, lng: 5.91}} }});
-                {}
-              }}
-            </script>
-          </head>
-          <body>
-            <div id='map' style='height: 500px; width: 100%;'></div>
-          </body>
-        </html>
-      )";
+    R"(
+      <!DOCTYPE html>
+      <html> 
+        <head>
+          <title>Logged Data Map</title>
+          <script src='https://maps.googleapis.com/maps/api/js?key=AIzaSyDAHENFKMG6TTIBHi3AfdpGlnx-U4V5FNI&callback=initMap' async defer></script>
+          <script>
+            let map;
+            function initMap() {{
+              map = new google.maps.Map(document.getElementById('map'), {{ zoom: 12, center: {{lat: 51.98, lng: 5.91}} }});
+              {}
+            }}
+          </script>
+        </head>
+        <body>
+          <div id='map' style='height: 800px; width: 100%;'></div>
+        </body>
+      </html>
+    )";
 // clang-format on
-}  // namespace
-
-namespace {
 // details used to store password in system keychain
 const std::string kPackage = "com.LeoGeo.LeoGeo";
 const std::string kService = "LeoGeo";
@@ -72,35 +71,24 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   button_layout_ = make_unique<QBoxLayout>(QBoxLayout::TopToBottom);
   button_top_layout_ = make_unique<QBoxLayout>(QBoxLayout::LeftToRight);
   button_bottom_layout_ = make_unique<QBoxLayout>(QBoxLayout::LeftToRight);
-  map_view_ = std::make_unique<QWebEngineView>(this);
-  map_view_->hide();
 
-  layout_->addWidget(map_view_.get());
   button_layout_->addLayout(button_top_layout_.get());
   button_layout_->addLayout(button_bottom_layout_.get());
-
   layout_->addLayout(button_layout_.get());
 
   // variable is passed into each keychain function, can
   // then be used to know which particular error
   // occurred (if any)
-  keychain_error_ = keychain::Error();
   error_message_ = make_unique<QErrorMessage>(this);
   message_ = make_unique<QMessageBox>(this);
 
+  keychain_error_ = keychain::Error();
   password_ = keychain::getPassword(kPackage, kService, kUser, keychain_error_);
-
-  // contains the input boxes and buttons for coordinates, hidden until admin
-  // mode
-  coord_frame_ = make_unique<CoordFrame>();
-  coord_frame_->hide();
-
-  layout_->addWidget(coord_frame_.get());
 
   usb_init_button_ = make_unique<QPushButton>("Connect", this);
   log_fetch_button_ = make_unique<QPushButton>("Fetch Logs", this);
   admin_mode_button_ = make_unique<QPushButton>("Admin Mode", this);
-  switch_data_view_button_ = make_unique<QPushButton>("Switch Data View", this);
+  switch_data_view_button_ = make_unique<QPushButton>("Show Route", this);
   switch_data_view_button_->setEnabled(false);
 
   button_top_layout_->addWidget(usb_init_button_.get());
@@ -131,12 +119,28 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   temp_chart_->setTitle("Temperature");
   temp_chart_->addSeries(temp_series_.get());
   axis_x_ = std::make_unique<QDateTimeAxis>();
-  axis_y_ = std::make_unique<QValueAxis>();
   axis_x_->setFormat("dd.MM hh:mm");
+  axis_y_ = std::make_unique<QValueAxis>();
+  axis_y_->setLabelFormat("%i");
+  axis_y_->setTitleText("Temperature");
   temp_view_ = make_unique<QChartView>(temp_chart_.get(), this);
   temp_view_->show();
+  temp_chart_->addAxis(axis_x_.get(), Qt::AlignBottom);
+  temp_chart_->addAxis(axis_y_.get(), Qt::AlignLeft);
+
+  map_view_ = std::make_unique<QWebEngineView>(this);
+  map_view_->hide();
+
+  // contains the input boxes and buttons for coordinates, hidden until admin
+  // mode
+  coord_frame_ = make_unique<CoordFrame>();
+  coord_frame_->hide();
+
+  temp_view_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  map_view_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
   layout_->addWidget(temp_view_.get());
+  layout_->addWidget(map_view_.get());
   layout_->addWidget(coord_frame_.get());
 
   // assosciating clicking buttons with their corresponding functions.
@@ -157,10 +161,6 @@ MainWindow::MainWindow(QWidget *parent) : QWidget(parent) {
   connect(switch_data_view_button_.get(), &QPushButton::clicked, this,
           &MainWindow::DataSwitchButtonHandler);
 
-  temp_view_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  map_view_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  layout_->setStretch(0, 0);
-  layout_->setStretch(2, 4);
   this->setLayout(layout_.get());
   this->setWindowTitle(tr("LeoGeo"));
   this->show();
@@ -195,7 +195,7 @@ void MainWindow::LogFetchButtonHandler() {
   // configuring serial port, 9600-8-N-1
   serial_port.setPortName(tr(port_name_.c_str()));
   serial_port.setParity(QSerialPort::NoParity);
-  serial_port.setBaudRate(QSerialPort::Baud9600);  // NOLINT
+  serial_port.setBaudRate(QSerialPort::Baud9600);
   serial_port.setDataBits(QSerialPort::Data8);
   serial_port.setStopBits(QSerialPort::OneStop);
   serial_port.setFlowControl(QSerialPort::SoftwareControl);
@@ -231,81 +231,10 @@ void MainWindow::LogFetchButtonHandler() {
     return;
   }
 
-  QFile file(QDir::homePath() + "/LeoGeoData.csv");
-  if (file.exists()) file.remove();
-  if (!file.open(QIODevice::ReadWrite)) {
-    auto error = file.error();  // NOLINT
-    error_message_->showMessage(tr("Error: could not create data file"));
-    return;
-  }
-  QTextStream stream(&file);
-  stream << "date, time, latitude, longitude, temperature" << Qt::endl;
-  while (!data_string.empty()) {
-    stream << data_string.substr(0, data_string.find_first_of(";")).c_str()
-           << Qt::endl;
-    std::string date = data_string.substr(0, data_string.find_first_of(","));
-    int date_d = stoi(date.substr(0, 1));
-    int date_m = stoi(date.substr(2, 3));
-    int date_y = stoi(date.substr(4, 5));  // NOLINT
-    data_string.erase(0, data_string.find_first_of(",") + 1);
+  ParseData(data_string);
+  BuildChart();
+  BuildWebView();
 
-    std::string time = data_string.substr(0, data_string.find_first_of(","));
-    int time_h = stoi(time.substr(0, 1));
-    int time_m = stoi(time.substr(2, 3));
-    int time_s = stoi(time.substr(4, 5));  // NOLINT
-    data_string.erase(0, data_string.find_first_of(",") + 1);
-
-    double latitude =
-        std::stod(data_string.substr(0, data_string.find_first_of(",")));
-    data_string.erase(0, data_string.find_first_of(",") + 1);
-
-    double longitude =
-        std::stod(data_string.substr(0, data_string.find_first_of(",")));
-    data_string.erase(0, data_string.find_first_of(",") + 1);
-
-    double temperature =
-        std::stod(data_string.substr(0, data_string.find_first_of(";")));
-    data_string.erase(0, data_string.find_first_of(";") + 1);
-
-    log_vector_.push_back(LogData{Coordinates{latitude, longitude}, temperature,
-                                  QDateTime(QDate(date_y, date_m, date_d),
-                                            QTime(time_h, time_m, time_s))});
-  }
-
-  file.close();
-
-  // i've found removing the lineseries and putting back again is the best way
-  // to get the chart to update with new values
-  temp_chart_->removeSeries(temp_series_.get());
-
-  temp_series_->clear();
-  for (auto datapoint : log_vector_) {
-    // NOLINTNEXTLINE
-    temp_series_->append(datapoint.datetime.toMSecsSinceEpoch(),
-                         datapoint.temperature);
-  }
-
-  temp_chart_->addSeries(temp_series_.get());
-  temp_chart_->legend()->hide();
-  temp_chart_->addAxis(axis_x_.get(), Qt::AlignBottom);
-  temp_series_->attachAxis(axis_x_.get());
-  temp_chart_->addAxis(axis_y_.get(), Qt::AlignBottom);
-  temp_series_->attachAxis(axis_y_.get());
-
-  temp_view_->update();
-
-  std::string markers_js;
-  foreach (auto &logdata, log_vector_) {
-    markers_js += std::format(
-        "new google.maps.Marker({{ position: {{lat: {}, lng: {}}}, map: map "
-        "}});\n",
-        logdata.coordinates.latitude, logdata.coordinates.longitude);
-  }
-
-  layout_->addWidget(map_view_.get());
-
-  auto request_html = std::format(html, markers_js);
-  map_view_->setHtml(request_html.c_str());
   switch_data_view_button_->setEnabled(true);
   this->show();
 }
@@ -519,7 +448,6 @@ void MainWindow::UnlockButtonHandler() {
       data_bytes.append(serial_port.readAll());
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(100));  // NOLINT
-    qDebug() << data_bytes.toStdString() << Qt::endl;
     loop_num++;
   }
   serial_port.close();
@@ -529,9 +457,11 @@ void MainWindow::DataSwitchButtonHandler() {
   if (map_view_->isVisible()) {
     map_view_->hide();
     temp_view_->show();
+    switch_data_view_button_->setText("Show Route");
   } else {
     map_view_->show();
     temp_view_->hide();
+    switch_data_view_button_->setText("Show Temperature");
   }
 }
 
@@ -578,66 +508,75 @@ void MainWindow::UartErrorHandler(QSerialPort::SerialPortError error) {
              .c_str()));
 }
 
-std::vector<LogData> MainWindow::LogVector() { return log_vector_; }
+void MainWindow::ParseData(std::string data_string) {
+  QFile file(QDir::homePath() + "/LeoGeoData.csv");
+  if (file.exists()) file.remove();
+  if (!file.open(QIODevice::ReadWrite)) {
+    error_message_->showMessage(tr("Error: could not create data file"));
+    return;
+  }
+  QTextStream stream(&file);
+  stream << "date, time, latitude, longitude, temperature" << Qt::endl;
+  while (!data_string.empty()) {
+    stream << data_string.substr(0, data_string.find_first_of(";")).c_str()
+           << Qt::endl;
+    std::string date = data_string.substr(0, data_string.find_first_of(","));
+    data_string.erase(0, data_string.find_first_of(",") + 1);
+    std::string time = data_string.substr(0, data_string.find_first_of(","));
+    if (time.length() == 5) time = "0" + time;  // NOLINT
+    data_string.erase(0, data_string.find_first_of(",") + 1);
+    QDateTime datetime =
+        QDateTime::fromString((date + time).c_str(), "ddMMyyhhmmss")
+            .addYears(100);  // NOLINT
 
-CoordFrame::CoordFrame(QWidget *parent) {
-  layout_ = std::make_unique<QVBoxLayout>();
-  label_layout_ = std::make_unique<QHBoxLayout>();
-  lat_label_ = std::make_unique<QLabel>("Latitude:");
-  long_label_ = std::make_unique<QLabel>("Longitude:");
-  label_layout_->addWidget(lat_label_.get());
-  label_layout_->addWidget(long_label_.get());
-  layout_->addLayout(label_layout_.get());
-  coord_set_1_ = std::make_unique<CoordSet>();
-  layout_->addWidget(coord_set_1_.get());
-  coord_set_2_ = std::make_unique<CoordSet>();
-  layout_->addWidget(coord_set_2_.get());
-  coord_set_3_ = std::make_unique<CoordSet>();
-  layout_->addWidget(coord_set_3_.get());
-  this->setLayout(layout_.get());
+    double latitude =
+        std::stod(data_string.substr(0, data_string.find_first_of(",")));
+    data_string.erase(0, data_string.find_first_of(",") + 1);
+
+    double longitude =
+        std::stod(data_string.substr(0, data_string.find_first_of(",")));
+    data_string.erase(0, data_string.find_first_of(",") + 1);
+
+    double temperature =
+        std::stod(data_string.substr(0, data_string.find_first_of(";")));
+    data_string.erase(0, data_string.find_first_of(";") + 1);
+
+    log_vector_.push_back(
+        LogData{Coordinates{latitude, longitude}, temperature, datetime});
+  }
+
+  file.close();
 }
 
-std::string CoordFrame::GetCoords() {
-  return std::format("{},{},{},{},{},{}",
-                     coord_set_1_->GetCoordinates().latitude,
-                     coord_set_1_->GetCoordinates().longitude,
-                     coord_set_2_->GetCoordinates().latitude,
-                     coord_set_2_->GetCoordinates().longitude,
-                     coord_set_3_->GetCoordinates().latitude,
-                     coord_set_3_->GetCoordinates().longitude);
+void MainWindow::BuildWebView() {
+  std::string markers_js;
+  foreach (auto &logdata, log_vector_) {
+    markers_js += std::format(
+        "new google.maps.Marker({{ position: {{lat: {}, lng: {}}}, map: map "
+        "}});\n",
+        logdata.coordinates.latitude, logdata.coordinates.longitude);
+  }
+
+  auto request_html = std::format(html, markers_js);
+  map_view_->setHtml(request_html.c_str());
 }
 
-CoordSet::CoordSet(QWidget *parent) : parent_(parent) {
-  // each widget of this class contains a button for deleting itself, and two
-  // number entry boxes, one for longitude and latitude. a button in the outer
-  // layout allows the user to spawn as many of these as they want (or at least
-  // until their screen runs out of space, haven't implemented scrolling)
-  using std::make_unique;
+void MainWindow::BuildChart() {
+  // i've found removing the lineseries and putting back again is the best way
+  // to get the chart to update with new values
+  temp_chart_->removeSeries(temp_series_.get());
 
-  layout_ = make_unique<QHBoxLayout>();
-  lat_ = make_unique<QDoubleSpinBox>(this);
-  // limiting the possible input values to numbers that are actually valid
-  // global coordinates
-  // also setting to up to ten decimals of precision, probably more than
-  // neccessary, definitely more than the gps module can provide, but costs us
-  // nothing with the range of values we're expecting
-  lat_->setRange(-90, 90);  // NOLINT
-  lat_->setDecimals(10);    // NOLINT
-  lat_->show();
-  long_ = make_unique<QDoubleSpinBox>(this);
-  long_->setRange(-180, 180);  // NOLINT
-  long_->setDecimals(10);      // NOLINT
-  long_->show();
+  temp_series_ = std::make_unique<QLineSeries>();
+  foreach (auto datapoint, log_vector_) {
+    // NOLINTNEXTLINE
+    temp_series_->append(datapoint.datetime.toMSecsSinceEpoch(),
+                         datapoint.temperature);
+  }
 
-  layout_->addWidget(lat_.get());
-  layout_->addWidget(long_.get());
+  temp_chart_->addSeries(temp_series_.get());
+  temp_series_->attachAxis(axis_x_.get());
+  temp_series_->attachAxis(axis_y_.get());
+  temp_chart_->legend()->hide();
 
-  this->setLayout(layout_.get());
+  temp_view_->update();
 }
-
-Coordinates CoordSet::GetCoordinates() {
-  // very sophisticated function, bet you can't guess what it does
-
-  return Coordinates{lat_->value(), long_->value()};
-}
-}  // namespace LeoGeoUi
