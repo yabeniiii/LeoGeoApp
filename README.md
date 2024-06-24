@@ -13,12 +13,12 @@ make setup
 make build
 ```
 
-###Linux:
+### Linux:
 the executable will be output as:
 ```
 ./build/bin/{Debug/Release}/LeoGeo
 ```
-###Mac:
+### Mac:
 it will be output as an app package, as:
 ```
 ./build/bin/{Debug/Release}/LeoGeo.app
