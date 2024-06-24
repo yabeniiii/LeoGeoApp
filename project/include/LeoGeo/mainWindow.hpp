@@ -40,7 +40,7 @@ class MainWindow;
 
 class MainWindow : public QWidget {
  public:
-  explicit MainWindow(QWidget *parent = nullptr);
+  explicit MainWindow(QWidget* parent = nullptr);
 
  private slots:
   void UsbInitButtonHandler();
@@ -53,6 +53,8 @@ class MainWindow : public QWidget {
   void DataSwitchButtonHandler();
 
  private:
+  bool CheckValidPort();
+  void UartConfig(QSerialPort* serial_port);
   void UartErrorHandler(QSerialPort::SerialPortError error);
   void ParseData(std::string data_string);
   void BuildWebView();
